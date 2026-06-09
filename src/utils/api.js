@@ -1,9 +1,6 @@
 import axios from 'axios';
 
-export const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://34.234.65.13'
-    : window.location.origin);
+export const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'https://mail.awaisamjad.engineer';
 
 export const getBackendUrl = () => {
   const saved = localStorage.getItem('mailflow-backend-url');

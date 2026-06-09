@@ -4,7 +4,7 @@ import { Settings, Shield, Globe, Key, AlertCircle, CheckCircle2, Trash2, Refres
 import * as api from '../utils/api';
 
 export default function SettingsTab() {
-  const { user, updateProfile, changePassword, getBackendUrl, setBackendUrl } = useAuth();
+  const { user, updateProfile, changePassword } = useAuth();
   
   // Profile settings state
   const [profileName, setProfileName] = useState(user?.full_name || '');
@@ -21,9 +21,7 @@ export default function SettingsTab() {
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
-  // Runtime Backend Server Settings
-  const [backendUrl, setBackendUrlInput] = useState(getBackendUrl());
-  const [urlSuccess, setUrlSuccess] = useState('');
+
 
   // SMTP Gmail settings state
   const [smtpAddress, setSmtpAddress] = useState('');
@@ -92,16 +90,7 @@ export default function SettingsTab() {
     }
   };
 
-  // Handle Backend URL update
-  const handleUrlUpdate = (e) => {
-    e.preventDefault();
-    setUrlSuccess('');
-    setBackendUrl(backendUrl);
-    setUrlSuccess('Server connection path updated! Reload to fully apply change.');
-    setTimeout(() => {
-      window.location.reload();
-    }, 1000);
-  };
+
 
   // Handle Save SMTP credentials
   const handleSaveSMTP = async (e) => {
@@ -275,35 +264,7 @@ export default function SettingsTab() {
           </form>
         </div>
 
-        {/* Runtime API Endpoint configuration */}
-        <div className="card p-6 space-y-4">
-          <div className="flex items-center gap-2 border-b border-theme pb-2">
-            <Globe className="w-5 h-5 text-blue-500" />
-            <h3 className="text-base font-bold t1">Backend Server Address</h3>
-          </div>
-          <form onSubmit={handleUrlUpdate} className="space-y-4">
-            <div>
-              <label className="field-label">Django Server base URL</label>
-              <input
-                type="text"
-                value={backendUrl}
-                onChange={(e) => setBackendUrlInput(e.target.value)}
-                placeholder="http://localhost:8000"
-                className="input-field"
-                required
-              />
-            </div>
-            {urlSuccess && (
-              <div className="alert-success flex items-start gap-2 text-emerald-500 bg-emerald-500/10 border-emerald-500/20">
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
-                <p className="text-xs font-semibold">{urlSuccess}</p>
-              </div>
-            )}
-            <button type="submit" className="btn-secondary w-full justify-center">
-              Apply Server Path
-            </button>
-          </form>
-        </div>
+
       </div>
 
       {/* Right Column: Gmail SMTP Configuration */}

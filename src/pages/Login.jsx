@@ -53,12 +53,7 @@ export default function Login({ onBackToHome }) {
         setToken('');
       }
     } catch (err) {
-      if (!err.response) {
-        setError('Connection failed. Please check if your Django backend is running and reachable, or configure the server URL below.');
-        setShowServerSettings(true);
-      } else {
-        setError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Something went wrong.');
-      }
+      setError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Something went wrong.');
     } finally {
       setLoading(false);
     }
@@ -80,14 +75,6 @@ export default function Login({ onBackToHome }) {
             ← Home
           </button>
         )}
-        <button
-          onClick={() => setShowServerSettings(!showServerSettings)}
-          aria-label="Server Settings"
-          title="Configure backend server address"
-          className={`p-2.5 rounded-xl surface-2 hover:bg-[var(--surface-3)] border transition-all cursor-pointer ${showServerSettings ? 'border-violet-500 bg-violet-500/10' : 'border-theme'}`}
-        >
-          <Globe className={`w-5 h-5 ${showServerSettings ? 'text-violet-500' : 'text-blue-500'}`} />
-        </button>
         <button
           onClick={toggle}
           aria-label="Toggle theme"
@@ -122,53 +109,6 @@ export default function Login({ onBackToHome }) {
               {mode === 'reset' && 'Set your new secure password'}
             </p>
           </div>
-
-          {/* Server Settings Panel */}
-          {showServerSettings && (
-            <div className="surface-2 p-4 rounded-xl border border-theme space-y-3 animate-slide-up">
-              <div className="flex items-center gap-2 pb-1 border-b border-theme">
-                <Globe className="w-4 h-4 text-blue-500" />
-                <span className="text-xs font-bold t1">Server Configuration</span>
-              </div>
-              <div className="space-y-2">
-                <p className="text-[10px] t3 leading-normal">
-                  Configure the URL of your deployed Django backend. Currently pointing to:
-                </p>
-                <input
-                  type="text"
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                  placeholder="http://127.0.0.1:8000"
-                  className="input-field py-2 text-xs"
-                />
-                {serverUrlSuccess && (
-                  <p className="text-[10px] text-emerald-500 font-semibold">{serverUrlSuccess}</p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBackendUrl(serverUrl);
-                      setServerUrlSuccess('Applied! Reloading page...');
-                      setTimeout(() => {
-                        window.location.reload();
-                      }, 800);
-                    }}
-                    className="btn-primary py-1.5 px-3 text-xs justify-center flex-1"
-                  >
-                    Save & Apply
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowServerSettings(false)}
-                    className="btn-secondary py-1.5 px-3 text-xs justify-center"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
