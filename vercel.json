@@ -2,11 +2,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "http://34.234.65.13/api/:path*"
+      "destination": "/api/proxy?path=:path*"
     },
     {
-      "source": "/health/:path*",
-      "destination": "http://34.234.65.13/health/:path*"
+      "source": "/health",
+      "destination": "http://34.234.65.13/health/"
     },
     {
       "source": "/admin/:path*",
