@@ -1,5 +1,24 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "http://34.234.65.13/api/:path*"
+    },
+    {
+      "source": "/health/:path*",
+      "destination": "http://34.234.65.13/health/:path*"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "http://34.234.65.13/admin/:path*"
+    },
+    {
+      "source": "/static/:path*",
+      "destination": "http://34.234.65.13/static/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
