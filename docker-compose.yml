@@ -63,7 +63,7 @@ services:
     networks:
       - mailflow_network
     ports:
-      - "80:8000"
+      - "127.0.0.1:8000:8000"
     logging:
       driver: "json-file"
       options:
