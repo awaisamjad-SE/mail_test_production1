@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "/api/proxy?path=:path*"
-    },
-    {
       "source": "/health",
       "destination": "http://34.234.65.13/health/"
     },
