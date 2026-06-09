@@ -45,7 +45,7 @@ services:
       - DEBUG=False
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       - SECRET_KEY=${SECRET_KEY:-django-production-secret-key-999}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGhpcy1pcy1hLXNlY3JldC1rZXktZm9yLWZlcm5ldC1hZXM=}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-oOpiUs4DQSFC54MZ43NxFjWSS5JcUUBvnnHLGd4Alsk=}
       - DATABASE_URL=postgresql://${DB_USER:-mailflow_user}:${DB_PASSWORD:-securepass123}@db:5432/${DB_NAME:-mailflow}
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
@@ -78,7 +78,7 @@ services:
       - DEBUG=False
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
       - SECRET_KEY=${SECRET_KEY:-django-production-secret-key-999}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGhpcy1pcy1hLXNlY3JldC1rZXktZm9yLWZlcm5ldC1hZXM=}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-oOpiUs4DQSFC54MZ43NxFjWSS5JcUUBvnnHLGd4Alsk=}
       - DATABASE_URL=postgresql://${DB_USER:-mailflow_user}:${DB_PASSWORD:-securepass123}@db:5432/${DB_NAME:-mailflow}
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
