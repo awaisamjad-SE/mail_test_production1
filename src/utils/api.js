@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const DEFAULT_BACKEND_URL = 'http://127.0.0.1:8000';
+export const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 export const getBackendUrl = () => {
   const saved = localStorage.getItem('mailflow-backend-url');
