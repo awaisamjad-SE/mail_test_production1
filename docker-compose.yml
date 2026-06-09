@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-mailflow}
+      POSTGRES_USER: ${DB_USER:-mailflow_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-securepass123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backup:/backup
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-mailflow_user} -d ${DB_NAME:-mailflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mailflow_network
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redispass123}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redispass123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mailflow_network
+
+  backend:
+    build: ./backend
+    restart: always
+    command: >
+      sh -c "python manage.py collectstatic --noinput && \
+             python manage.py migrate && \
+             gunicorn mailflow_backend.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120"
+    volumes:
+      - ./staticfiles:/app/staticfiles
+      - ./media:/app/media
+    environment:
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      - SECRET_KEY=${SECRET_KEY:-django-production-secret-key-999}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGhpcy1pcy1hLXNlY3JldC1rZXktZm9yLWZlcm5ldC1hZXM=}
+      - DATABASE_URL=postgresql://${DB_USER:-mailflow_user}:${DB_PASSWORD:-securepass123}@db:5432/${DB_NAME:-mailflow}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - mailflow_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  celery_worker:
+    build: ./backend
+    restart: always
+    command: celery -A mailflow_backend worker --loglevel=info
+    environment:
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      - SECRET_KEY=${SECRET_KEY:-django-production-secret-key-999}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-dGhpcy1pcy1hLXNlY3JldC1rZXktZm9yLWZlcm5ldC1hZXM=}
+      - DATABASE_URL=postgresql://${DB_USER:-mailflow_user}:${DB_PASSWORD:-securepass123}@db:5432/${DB_NAME:-mailflow}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-redispass123}@redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mailflow_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./staticfiles:/app/staticfiles:ro
+      # SSL Certs mapping for Let's Encrypt / Production SSL
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certbot-www:/var/www/certbot
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mailflow_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  mailflow_network:
+    driver: bridge

@@ -1,0 +1,12 @@
+node_modules
+backend/venv
+backend/db.sqlite3
+backend/staticfiles
+dist
+.git
+.env
+.idea
+.vscode
+*.log
+Dockerfile
+docker-compose.yml

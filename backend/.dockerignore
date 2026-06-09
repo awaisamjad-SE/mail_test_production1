@@ -1,0 +1,9 @@
+venv
+db.sqlite3
+staticfiles
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+seed_db.py
