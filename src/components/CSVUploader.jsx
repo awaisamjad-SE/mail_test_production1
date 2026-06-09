@@ -73,10 +73,10 @@ export default function CSVUploader({ onDataParsed, requiredColumns = 'bulk', cl
         onClick={() => fileInputRef.current?.click()}
         className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 ${
           isDragging
-            ? 'border-[var(--accent)] bg-[var(--accent-bg)] scale-[1.02]'
+            ? 'border-cyan bg-cyan/10 scale-[1.01]'
             : fileName
-            ? 'border-[var(--success-border)] bg-[var(--success-bg)]'
-            : 'border-theme surface-2 hover:border-[var(--accent)] hover:bg-[var(--surface-3)]'
+            ? 'border-lime bg-lime/10'
+            : 'border-border bg-white/[0.02] hover:border-cyan/40'
         }`}
       >
         <input
@@ -88,29 +88,29 @@ export default function CSVUploader({ onDataParsed, requiredColumns = 'bulk', cl
         />
 
         {isLoading ? (
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 border-4 border-[var(--accent-border)] border-t-[var(--accent)] rounded-full animate-spin" />
-            <p className="t2 text-sm">Parsing CSV...</p>
+          <div className="flex flex-col items-center gap-3 py-4">
+            <div className="w-10 h-10 border-4 border-cyan/20 border-t-cyan rounded-full animate-spin" />
+            <p className="text-muted-foreground text-sm font-medium">Parsing CSV list...</p>
           </div>
         ) : fileName ? (
-          <div className="flex items-center justify-center gap-3">
-            <FileText className="w-6 h-6 text-[var(--success-text)]" />
-            <span className="text-[var(--success-text)] font-semibold">{fileName}</span>
+          <div className="flex items-center justify-center gap-3 py-4 animate-fade-in">
+            <FileText className="w-6 h-6 text-lime animate-pulse" />
+            <span className="text-lime font-display font-semibold">{fileName}</span>
             <button
               onClick={(e) => { e.stopPropagation(); handleClear(); }}
-              className="ml-2 p-1.5 rounded-lg surface-2 hover:bg-[var(--surface-3)] transition-colors border border-theme"
+              className="ml-2 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition border border-border"
             >
-              <X className="w-4 h-4 t3 hover:t1" />
+              <X className="w-4 h-4 text-muted-foreground hover:text-foreground cursor-pointer" />
             </button>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-[var(--accent-bg)] flex items-center justify-center border border-[var(--accent-border)]">
-              <Upload className="w-7 h-7 accent-text" />
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-lime/20 to-cyan/20 flex items-center justify-center border border-border group-hover:scale-105 transition-transform duration-300">
+              <Upload className="w-6 h-6 text-cyan" />
             </div>
             <div>
-              <p className="t1 font-semibold">Drop your CSV file here</p>
-              <p className="t3 text-sm mt-1">or click to browse • Max 5MB</p>
+              <p className="font-display font-semibold text-foreground text-base">Drop your recipient CSV here</p>
+              <p className="text-muted-foreground text-xs mt-1">or click to browse local files • Max 5MB</p>
             </div>
           </div>
         )}
@@ -125,10 +125,10 @@ export default function CSVUploader({ onDataParsed, requiredColumns = 'bulk', cl
 
       <button
         onClick={handleDownloadSample}
-        className="mt-3 flex items-center gap-2 text-sm t3 hover:accent-text transition-colors bg-transparent border-none cursor-pointer p-0"
+        className="mt-3 flex items-center gap-2 text-xs text-muted-foreground hover:text-cyan transition-colors bg-transparent border-none cursor-pointer p-0"
       >
         <Download className="w-4 h-4" />
-        <span>Download sample CSV</span>
+        <span>Download sample CSV file</span>
       </button>
     </div>
   );

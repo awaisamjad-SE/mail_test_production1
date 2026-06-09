@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -7,50 +7,66 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 
 function AppContent() {
-  const [page, setPage] = useState('home'); // 'home' | 'login' | 'dashboard'
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, loading } = useAuth();
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
-  const handleEnter = () => {
+  // Sync state with browser history navigation (back/forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigate = (path) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
+  };
+
+  // Perform redirect operations asynchronously to avoid React state-in-render warnings
+  useEffect(() => {
+    if (loading) return;
+
     if (isLoggedIn) {
-      setPage('dashboard');
+      if (currentPath === '/login' || currentPath === '/') {
+        navigate('/dashboard');
+      }
     } else {
-      setPage('login');
+      if (currentPath === '/dashboard') {
+        navigate('/login');
+      }
     }
-  };
+  }, [isLoggedIn, currentPath, loading]);
 
-  const handleBackToHome = () => {
-    setPage('home');
-  };
-
-  // If logged in and page is 'login', show dashboard instead
-  if (isLoggedIn && page === 'login') {
-    setPage('dashboard');
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-cyan/20 border-t-cyan rounded-full animate-spin" />
+      </div>
+    );
   }
 
-  // If logged out and page is 'dashboard', show login instead
-  if (!isLoggedIn && page === 'dashboard') {
-    setPage('login');
+  // Render subpage views based on browser url pathnames
+  if (currentPath === '/dashboard') {
+    return (
+      <ProtectedRoute>
+        <Dashboard />
+      </ProtectedRoute>
+    );
+  }
+
+  if (currentPath === '/login') {
+    return (
+      <Login
+        onLoginSuccess={() => navigate('/dashboard')}
+        onBackToHome={() => navigate('/')}
+      />
+    );
   }
 
   return (
-    <>
-      {page === 'home' && (
-        <Home onEnter={handleEnter} />
-      )}
-      
-      {page === 'login' && (
-        <Login
-          onLoginSuccess={() => setPage('dashboard')}
-          onBackToHome={handleBackToHome}
-        />
-      )}
-      
-      {page === 'dashboard' && (
-        <ProtectedRoute>
-          <Dashboard />
-        </ProtectedRoute>
-      )}
-    </>
+    <Home onEnter={() => navigate(isLoggedIn ? '/dashboard' : '/login')} />
   );
 }
 

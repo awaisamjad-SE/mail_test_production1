@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Send, Users, Loader2, ChevronDown, ChevronUp, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Send, Users, Loader2, ChevronDown, ChevronUp, ArrowLeft, ArrowRight, Edit2, Check, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 import CSVUploader from './CSVUploader';
 import EmailPreview from './EmailPreview';
 import StatusToast from './StatusToast';
 import BodyEditor from './BodyEditor';
 import { sendEmails } from '../utils/api';
 import { buildEmailPayload } from '../utils/templateEngine';
+import { emailTemplates, buildCorporateHTML } from '../data/templates';
+import imgBulk from '../assets/snippet-bulk.jpg';
 
 export default function BulkSend({ onNavigateToTracker }) {
   const [csvData, setCsvData] = useState(null);
@@ -16,6 +18,65 @@ export default function BulkSend({ onNavigateToTracker }) {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [showTable, setShowTable] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // Editing Row States
+  const [editingRowIndex, setEditingRowIndex] = useState(null);
+  const [editEmail, setEditEmail] = useState('');
+  const [editName, setEditName] = useState('');
+
+  const handleEditRow = (index) => {
+    setEditingRowIndex(index);
+    setEditEmail(csvData.rows[index].email);
+    setEditName(csvData.rows[index].name || '');
+  };
+
+  const handleSaveRow = (index) => {
+    const updatedRows = [...csvData.rows];
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const isValidEmail = emailRegex.test(editEmail);
+
+    updatedRows[index] = {
+      ...updatedRows[index],
+      email: editEmail,
+      name: editName,
+      valid: isValidEmail
+    };
+
+    const validRows = updatedRows.filter(r => r.valid);
+    const validCount = validRows.length;
+    const invalidCount = updatedRows.length - validCount;
+
+    setCsvData({
+      ...csvData,
+      rows: updatedRows,
+      validRows: validRows,
+      validCount,
+      invalidCount
+    });
+
+    setEditingRowIndex(null);
+  };
+
+  const handleApplyTemplate = (e) => {
+    const templateId = e.target.value;
+    const template = emailTemplates.find(t => t.id === templateId);
+    if (!template) return;
+
+    setSubject(template.subject);
+
+    const compiled = buildCorporateHTML({
+      name: template.name,
+      headline: template.defaultHeadline || '',
+      bodyText: template.defaultBody || '',
+      headerBg: template.defaultHeaderColor || '#2563eb',
+      outerBg: template.defaultBgColor || '#f4f6f9',
+      showButton: template.hasButton !== false,
+      buttonText: template.defaultButtonText || 'View Details',
+      buttonUrl: template.defaultButtonUrl || 'https://example.com',
+      layoutType: template.layoutType
+    });
+    setBody(compiled);
+  };
 
   const handleSend = async () => {
     if (!csvData || !subject || !body) return;
@@ -47,7 +108,6 @@ export default function BulkSend({ onNavigateToTracker }) {
       setBody('');
       setCsvData(null);
 
-      // Redirect to tracker tab after 1.5 seconds
       if (onNavigateToTracker) {
         setTimeout(() => {
           onNavigateToTracker();
@@ -64,7 +124,6 @@ export default function BulkSend({ onNavigateToTracker }) {
     }
   };
 
-  // Build preview payload for the active recipient row
   const previewEmail = csvData?.validRows?.[previewIndex]
     ? buildEmailPayload(csvData.validRows[previewIndex], subject, body, replyTo)
     : { to: 'recipient@example.com', subject: subject || 'Demo Subject', body: body || 'Demo email body content' };
@@ -72,78 +131,191 @@ export default function BulkSend({ onNavigateToTracker }) {
   const canSend = csvData && csvData.validCount > 0 && subject && body && !sending;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Title */}
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-[var(--accent-bg)] border border-[var(--accent-border)] flex items-center justify-center">
-          <Users className="w-6 h-6 accent-text" />
-        </div>
+      <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-xl font-bold t1">Bulk Send</h2>
-          <p className="t3 text-sm">Upload CSV and compose a template message to send to all contacts</p>
+          <div className="text-[11px] tracking-[0.22em] uppercase text-cyan/80 font-mono mb-2">03 · Fan‑out</div>
+          <h1 className="text-3xl lg:text-4xl font-display font-bold tracking-tight">
+            Bulk <span className="gradient-text">send</span>
+          </h1>
+          <p className="text-muted-foreground mt-2 max-w-2xl">
+            Dispatch the same message to thousands. Smart throttle, per‑domain pacing and automatic worker distribution.
+          </p>
+        </div>
+      </div>
+
+      {/* Banner */}
+      <div className="relative h-48 lg:h-56 rounded-3xl overflow-hidden border border-border group">
+        <img src={imgBulk} alt="Bulk send infrastructure" loading="lazy" className="absolute inset-0 w-full h-full object-cover scale-105 group-hover:scale-110 transition-transform duration-1000" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/70 to-background/10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+        <div className="relative h-full p-6 lg:p-8 flex items-center">
+          <div className="flex-1">
+            <div className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.2em] text-cyan px-2.5 py-1 rounded-full bg-cyan/10 border border-cyan/20">
+              <span className="size-1.5 rounded-full bg-cyan animate-pulse" /> Fan‑out
+            </div>
+            <h2 className="mt-3 font-display text-xl lg:text-2xl font-semibold max-w-md">Smart throttling across pools — millions reached, reputation intact.</h2>
+          </div>
+          <div className="hidden md:grid grid-cols-3 gap-6 pr-2">
+            <div className="text-right">
+              <div className="font-display text-2xl font-bold gradient-text">{csvData?.validCount || 0}</div>
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Recipients</div>
+            </div>
+            <div className="text-right">
+              <div className="font-display text-2xl font-bold gradient-text">Celery</div>
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Throttle</div>
+            </div>
+            <div className="text-right">
+              <div className="font-display text-2xl font-bold gradient-text">Direct</div>
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Domain Pools</div>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left: Inputs & Composing */}
+        {/* Form area */}
         <div className="lg:col-span-7 space-y-6">
-          
           {/* Step 1: Upload */}
-          <div className="card p-6 space-y-4">
+          <div className="rounded-3xl glass border border-border p-6 space-y-4">
             <div className="flex items-center gap-3">
-              <span className="step-badge">1</span>
-              <h3 className="text-base font-bold t1">Upload CSV Recipients</h3>
+              <span className="size-6 rounded-lg bg-cyan/10 border border-cyan/35 text-cyan text-xs font-bold font-mono grid place-items-center">1</span>
+              <h3 className="text-base font-display font-semibold">Upload CSV Recipients</h3>
             </div>
             
-            <CSVUploader onDataParsed={setCsvData} requiredColumns="bulk" />
+            <CSVUploader 
+              onDataParsed={(data) => {
+                setCsvData(data);
+                if (data) {
+                  setShowTable(true);
+                  setPreviewIndex(0);
+                }
+              }} 
+              requiredColumns="bulk" 
+            />
 
             {csvData && (
-              <div className="p-4 rounded-xl surface-2 border border-theme animate-fade-in space-y-3">
+              <div className="p-4 rounded-2xl bg-white/[0.01] border border-border animate-fade-in space-y-4">
+                {/* Warning Alert Banner */}
+                {csvData.invalidCount === 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-lime bg-lime/10 border border-lime/20 p-3.5 rounded-xl">
+                    <CheckCircle2 className="size-4 shrink-0 text-lime" />
+                    <span>All emails are valid!</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-rose bg-rose/10 border border-rose/20 p-3.5 rounded-xl">
+                    <AlertCircle className="size-4 shrink-0 text-rose" />
+                    <span>Warning: {csvData.validCount} email{csvData.validCount !== 1 ? 's' : ''} are valid and {csvData.invalidCount} not valid.</span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <span className="text-[var(--success-text)] font-bold text-lg">{csvData.validCount}</span>
-                    <span className="t2 text-sm">valid emails</span>
+                  <div className="flex items-center gap-4 text-xs font-mono">
+                    <div>
+                      <span className="text-lime font-bold">{csvData.validCount} valid</span>
+                    </div>
                     {csvData.invalidCount > 0 && (
-                      <span className="text-[var(--error-text)] text-sm font-medium">{csvData.invalidCount} invalid</span>
+                      <div>
+                        <span className="text-rose font-bold">{csvData.invalidCount} not valid</span>
+                      </div>
                     )}
                   </div>
                   <button
                     onClick={() => setShowTable(!showTable)}
-                    className="btn-ghost px-2 py-1 flex items-center gap-1 text-xs"
+                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs flex items-center gap-1 cursor-pointer transition border border-border"
                   >
-                    <span>{showTable ? 'Hide Table' : 'Show Table'}</span>
+                    <span>{showTable ? 'Hide list' : 'Show list & edit'}</span>
                     {showTable ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
                 </div>
 
                 {showTable && (
-                  <div className="max-h-48 overflow-auto rounded-lg border border-theme bg-[var(--surface-3)]">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead className="t3 border-b border-theme sticky top-0 bg-[var(--surface-1)]">
+                  <div className="max-h-64 overflow-auto rounded-xl border border-border bg-black/15 scrollbar-thin">
+                    <table className="w-full text-xs text-left border-collapse font-mono">
+                      <thead className="text-muted-foreground border-b border-border bg-white/[0.02]">
                         <tr>
-                          <th className="py-2 px-3">#</th>
-                          {csvData.hasName && <th className="py-2 px-3">Name</th>}
-                          <th className="py-2 px-3">Email</th>
-                          <th className="py-2 px-3">Status</th>
+                          <th className="py-2.5 px-3">Index</th>
+                          {csvData.hasName && <th className="py-2.5 px-3">Name</th>}
+                          <th className="py-2.5 px-3">Email</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3 text-center">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {csvData.rows.slice(0, 50).map((row, i) => (
-                          <tr key={i} className="border-b border-theme last:border-none">
-                            <td className="py-2 px-3 t3">{row.index}</td>
-                            {csvData.hasName && <td className="py-2 px-3 t1 font-medium">{row.name}</td>}
-                            <td className="py-2 px-3 t2">{row.email}</td>
-                            <td className="py-2 px-3">
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                                row.valid
-                                  ? 'bg-[var(--success-bg)] text-[var(--success-text)] border border-[var(--success-border)]'
-                                  : 'bg-[var(--error-bg)] text-[var(--error-text)] border border-[var(--error-border)]'
-                              }`}>
-                                {row.valid ? 'Valid' : 'Invalid'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {csvData.rows.map((row, i) => {
+                          const isEditing = editingRowIndex === i;
+                          return (
+                            <tr key={i} className={`border-b border-border last:border-none hover:bg-white/[0.01] ${!row.valid ? 'bg-rose-500/5' : ''}`}>
+                              <td className="py-2 px-3 text-muted-foreground">{row.index}</td>
+                              
+                              {csvData.hasName && (
+                                <td className="py-2 px-3">
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={editName}
+                                      onChange={(e) => setEditName(e.target.value)}
+                                      className="px-2 py-1 bg-white/5 border border-border rounded text-xs text-foreground outline-none focus:border-cyan/50 max-w-[120px]"
+                                    />
+                                  ) : (
+                                    <span className="text-foreground font-semibold">{row.name}</span>
+                                  )}
+                                </td>
+                              )}
+
+                              <td className="py-2 px-3">
+                                {isEditing ? (
+                                  <input
+                                    type="email"
+                                    value={editEmail}
+                                    onChange={(e) => setEditEmail(e.target.value)}
+                                    className="px-2 py-1 bg-white/5 border border-border rounded text-xs text-foreground outline-none focus:border-cyan/50 max-w-[200px]"
+                                  />
+                                ) : (
+                                  <span className="text-muted-foreground">{row.email}</span>
+                                )}
+                              </td>
+
+                              <td className="py-2 px-3">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${
+                                  row.valid ? 'bg-lime/15 text-lime' : 'bg-rose/15 text-rose'
+                                }`}>
+                                  {row.valid ? 'Valid' : 'Invalid'}
+                                </span>
+                              </td>
+
+                              <td className="py-2 px-3 text-center">
+                                {isEditing ? (
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      onClick={() => handleSaveRow(i)}
+                                      className="p-1 rounded bg-lime/10 border border-lime/20 text-lime hover:bg-lime/20 transition cursor-pointer"
+                                      title="Save Change"
+                                    >
+                                      <Check className="size-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingRowIndex(null)}
+                                      className="p-1 rounded bg-rose/10 border border-rose/20 text-rose hover:bg-rose/20 transition cursor-pointer"
+                                      title="Cancel"
+                                    >
+                                      <X className="size-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleEditRow(i)}
+                                    className="p-1 rounded bg-white/5 border border-border text-muted-foreground hover:text-foreground hover:bg-white/10 transition cursor-pointer"
+                                    title="Edit Row"
+                                  >
+                                    <Edit2 className="size-3.5" />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -153,52 +325,76 @@ export default function BulkSend({ onNavigateToTracker }) {
           </div>
 
           {/* Step 2: Compose */}
-          <div className="card p-6 space-y-4">
+          <div className="rounded-3xl glass border border-border p-6 space-y-4">
             <div className="flex items-center gap-3">
-              <span className="step-badge">2</span>
-              <h3 className="text-base font-bold t1">Draft Template Message</h3>
+              <span className="size-6 rounded-lg bg-cyan/10 border border-cyan/35 text-cyan text-xs font-bold font-mono grid place-items-center">2</span>
+              <h3 className="text-base font-display font-semibold">Draft Template Message</h3>
             </div>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="field-label">Subject <span className="text-red-400">*</span></label>
+              {/* Load pre-designed templates shortcut */}
+              <label className="block space-y-2">
+                <span className="text-sm font-medium flex items-center justify-between">
+                  <span>Import Layout Template</span>
+                  <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
+                </span>
+                <select
+                  onChange={handleApplyTemplate}
+                  className="input py-2.5 text-sm bg-surface text-foreground border border-border rounded-xl cursor-pointer"
+                  defaultValue=""
+                >
+                  <option value="" disabled>-- Select a pre-designed corporate template --</option>
+                  {emailTemplates.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.icon} {t.name} ({t.category})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium flex items-center gap-1.5">
+                    Subject <span className="text-rose">*</span>
+                  </span>
                   <input
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    placeholder="Email subject line — supports {{Name}}"
-                    className="input-field"
+                    placeholder="Briefing — supports {{Name}}"
+                    className="input"
                     required
                   />
-                </div>
-
-                <div>
-                  <label className="field-label">Reply-To <span className="t3 text-[10px]">(optional)</span></label>
+                </label>
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium flex items-center gap-1.5">
+                    Reply-To <span className="text-[11px] text-muted-foreground font-normal">(optional)</span>
+                  </span>
                   <input
                     value={replyTo}
                     onChange={(e) => setReplyTo(e.target.value)}
                     placeholder="reply@example.com"
-                    className="input-field"
+                    className="input"
                   />
-                </div>
+                </label>
               </div>
 
-              <div>
-                <label className="field-label">Template Body <span className="text-red-400">*</span></label>
-                <div className="flex gap-2 mb-2">
-                  <span className="text-xs t3 self-center">Use template variables:</span>
-                  <button
-                    onClick={() => setSubject(prev => prev + '{{Name}}')}
-                    className="px-2 py-1 rounded bg-[var(--accent-bg)] border border-[var(--accent-border)] accent-text text-xs cursor-pointer"
-                  >
-                    Subject {"{{Name}}"}
-                  </button>
-                  <button
-                    onClick={() => setBody(prev => prev + '{{Name}}')}
-                    className="px-2 py-1 rounded bg-[var(--accent-bg)] border border-[var(--accent-border)] accent-text text-xs cursor-pointer"
-                  >
-                    Body {"{{Name}}"}
-                  </button>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-medium">Message Body <span className="text-rose">*</span></label>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setSubject(prev => prev + '{{Name}}')}
+                      className="px-2 py-0.5 rounded bg-cyan/10 hover:bg-cyan/15 text-[10px] text-cyan border border-cyan/20 cursor-pointer font-mono font-semibold"
+                    >
+                      Subject {"{{Name}}"}
+                    </button>
+                    <button
+                      onClick={() => setBody(prev => prev + '{{Name}}')}
+                      className="px-2 py-0.5 rounded bg-cyan/10 hover:bg-cyan/15 text-[10px] text-cyan border border-cyan/20 cursor-pointer font-mono font-semibold"
+                    >
+                      Body {"{{Name}}"}
+                    </button>
+                  </div>
                 </div>
                 
                 <BodyEditor value={body} onChange={setBody} />
@@ -206,48 +402,45 @@ export default function BulkSend({ onNavigateToTracker }) {
             </div>
           </div>
 
-          {/* Step 3: Action & Send Progress */}
-          <div className="card p-6 space-y-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleSend}
-                disabled={!canSend}
-                className="btn-primary"
-              >
-                {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                <span>
-                  {sending
-                    ? 'Launching campaign...'
-                    : `Launch campaign to ${csvData?.validCount || 0} Contacts`
-                  }
-                </span>
-              </button>
-            </div>
+          {/* Action trigger */}
+          <div className="rounded-3xl glass border border-border p-6">
+            <button
+              onClick={handleSend}
+              disabled={!canSend}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-lime to-cyan text-primary-foreground font-semibold flex items-center justify-center gap-2 hover:shadow-[0_8px_30px_-8px] hover:shadow-lime/60 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {sending ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}
+              <span>
+                {sending
+                  ? 'Launching campaign...'
+                  : `Launch campaign to ${csvData?.validCount || 0} Contacts`
+                }
+              </span>
+            </button>
           </div>
-
         </div>
 
-        {/* Right: Live Preview Panel */}
-        <div className="lg:col-span-5 lg:sticky lg:top-40 space-y-4">
+        {/* Live Preview Panel */}
+        <div className="lg:col-span-5 lg:sticky lg:top-24 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold t2">Preview Output</h3>
+            <h3 className="font-display font-semibold text-sm">Preview Output</h3>
             {csvData && csvData.validCount > 0 && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))}
                   disabled={previewIndex === 0}
-                  className="btn-ghost p-1 disabled:opacity-40"
+                  className="p-1 rounded bg-white/5 border border-border text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40"
                   aria-label="Previous recipient preview"
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
-                <span className="text-xs font-semibold t2">
+                <span className="text-xs font-semibold text-muted-foreground font-mono">
                   {previewIndex + 1} of {csvData.validCount}
                 </span>
                 <button
                   onClick={() => setPreviewIndex(Math.min(csvData.validCount - 1, previewIndex + 1))}
                   disabled={previewIndex >= csvData.validCount - 1}
-                  className="btn-ghost p-1 disabled:opacity-40"
+                  className="p-1 rounded bg-white/5 border border-border text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40"
                   aria-label="Next recipient preview"
                 >
                   <ArrowRight className="w-4 h-4" />
