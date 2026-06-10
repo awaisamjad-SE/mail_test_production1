@@ -6,18 +6,33 @@ import * as api from '../utils/api';
 
 export default function Login({ onBackToHome }) {
   const { isDark, toggle } = useTheme();
-  const { login, register } = useAuth();
+  const { login, register, verifyEmail } = useAuth();
   
-  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot' | 'reset'
+  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot' | 'reset' | 'verify_email'
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [token, setToken] = useState('');
+  const [otp, setOtp] = useState('');
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handleResendOTP = async () => {
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    try {
+      const reason = mode === 'verify_email' ? 'verification' : 'reset';
+      await api.resendOTPUser(email, reason);
+      setSuccess('A new 6-digit OTP code has been sent to your email.');
+    } catch (err) {
+      setError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to resend OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,23 +48,38 @@ export default function Login({ onBackToHome }) {
           throw new Error('Passwords do not match.');
         }
         await register(email, fullName, password, confirmPassword);
-        setSuccess('Registration successful! You can now log in.');
-        setMode('login');
+        setSuccess('Registration successful! Please check your email for the 6-digit verification code.');
+        setMode('verify_email');
         setPassword('');
         setConfirmPassword('');
+        setOtp('');
+      } else if (mode === 'verify_email') {
+        if (!otp) throw new Error('Please enter the 6-digit OTP code.');
+        await verifyEmail(email, otp);
+        setSuccess('Email verified successfully!');
       } else if (mode === 'forgot') {
         await api.forgotPassword(email);
-        setSuccess('Reset token sent! Check the console/database logs for the token.');
+        setSuccess('A 6-digit password reset OTP has been sent to your email. Check your email/logs.');
         setMode('reset');
+        setOtp('');
       } else if (mode === 'reset') {
-        await api.resetPassword(token, password);
+        if (!otp) throw new Error('Please enter the 6-digit OTP code.');
+        await api.resetPassword(email, otp, password);
         setSuccess('Password reset successful! Please log in.');
         setMode('login');
         setPassword('');
-        setToken('');
+        setOtp('');
       }
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Something went wrong.');
+      if (err.response?.data?.email_unverified) {
+        setError('Your email is not verified yet. Please enter the OTP sent to your email.');
+        setMode('verify_email');
+        setEmail(err.response.data.email || email);
+        setPassword('');
+        setOtp('');
+      } else {
+        setError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Something went wrong.');
+      }
     } finally {
       setLoading(false);
     }
@@ -93,12 +123,14 @@ export default function Login({ onBackToHome }) {
               {mode === 'register' && 'Create Account'}
               {mode === 'forgot' && 'Reset Password'}
               {mode === 'reset' && 'Set New Password'}
+              {mode === 'verify_email' && 'Verify Your Email'}
             </h2>
             <p className="text-muted-foreground text-xs font-medium">
               {mode === 'login' && 'Sign in to access your Pulsemail email center'}
               {mode === 'register' && 'Register for MailFlow email infrastructure'}
               {mode === 'forgot' && 'Enter email to receive reset credentials'}
-              {mode === 'reset' && 'Set your new secure password'}
+              {mode === 'reset' && 'Enter reset OTP and set your new password'}
+              {mode === 'verify_email' && 'Enter the 6-digit OTP code sent to your email'}
             </p>
           </div>
 
@@ -121,7 +153,7 @@ export default function Login({ onBackToHome }) {
               </label>
             )}
 
-            {(mode === 'login' || mode === 'register' || mode === 'forgot') && (
+            {(mode === 'login' || mode === 'register' || mode === 'forgot' || mode === 'verify_email' || mode === 'reset') && (
               <label className="block space-y-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Email Address</span>
                 <div className="relative">
@@ -133,28 +165,42 @@ export default function Login({ onBackToHome }) {
                     placeholder="user@example.com"
                     className="input pl-10"
                     required
+                    disabled={mode === 'verify_email' || mode === 'reset'}
                   />
                 </div>
               </label>
             )}
 
-            {mode === 'reset' && (
-              <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Reset Token</span>
-                <input
-                  type="text"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="Enter token from email/console"
-                  className="input"
-                  required
-                />
-              </label>
+            {(mode === 'verify_email' || mode === 'reset') && (
+              <div className="space-y-1.5">
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">6-Digit Verification OTP</span>
+                  <input
+                    type="text"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="123456"
+                    className="input font-mono text-center tracking-[0.5em] text-lg font-bold"
+                    required
+                    maxLength={6}
+                  />
+                </label>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleResendOTP}
+                    disabled={loading}
+                    className="text-xs font-bold text-cyan hover:text-lime transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-transparent border-none p-0"
+                  >
+                    Resend OTP Code
+                  </button>
+                </div>
+              </div>
             )}
 
             {(mode === 'login' || mode === 'register' || mode === 'reset') && (
               <label className="block space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Password</span>
+                <span className="text-xs font-medium text-muted-foreground">{mode === 'reset' ? 'New Password' : 'Password'}</span>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                   <input
@@ -213,8 +259,9 @@ export default function Login({ onBackToHome }) {
                 <>
                   {mode === 'login' && 'Sign in to Console'}
                   {mode === 'register' && 'Register Account'}
-                  {mode === 'forgot' && 'Send Reset Token'}
+                  {mode === 'forgot' && 'Send Reset OTP'}
                   {mode === 'reset' && 'Reset Password'}
+                  {mode === 'verify_email' && 'Verify OTP & Log In'}
                 </>
               )}
             </button>
@@ -225,13 +272,13 @@ export default function Login({ onBackToHome }) {
             {mode === 'login' && (
               <>
                 <button
-                  onClick={() => { setMode('register'); setError(''); setSuccess(''); }}
+                  onClick={() => { setMode('register'); setError(''); setSuccess(''); setPassword(''); }}
                   className="font-bold text-muted-foreground hover:text-cyan cursor-pointer bg-transparent border-none"
                 >
                   Don't have an account? Sign Up
                 </button>
                 <button
-                  onClick={() => { setMode('forgot'); setError(''); setSuccess(''); }}
+                  onClick={() => { setMode('forgot'); setError(''); setSuccess(''); setPassword(''); }}
                   className="font-semibold text-muted-foreground/60 hover:text-cyan cursor-pointer bg-transparent border-none mt-1"
                 >
                   Forgot password?
@@ -241,16 +288,16 @@ export default function Login({ onBackToHome }) {
 
             {mode === 'register' && (
               <button
-                onClick={() => { setMode('login'); setError(''); setSuccess(''); }}
+                onClick={() => { setMode('login'); setError(''); setSuccess(''); setPassword(''); }}
                 className="font-bold text-muted-foreground hover:text-cyan cursor-pointer bg-transparent border-none"
               >
                 Already have an account? Sign In
               </button>
             )}
 
-            {(mode === 'forgot' || mode === 'reset') && (
+            {(mode === 'forgot' || mode === 'reset' || mode === 'verify_email') && (
               <button
-                onClick={() => { setMode('login'); setError(''); setSuccess(''); }}
+                onClick={() => { setMode('login'); setError(''); setSuccess(''); setPassword(''); setOtp(''); }}
                 className="font-bold text-muted-foreground hover:text-cyan cursor-pointer bg-transparent border-none"
               >
                 ← Back to Login

@@ -55,6 +55,17 @@ export function AuthProvider({ children }) {
     await api.registerUser(email, fullName, password, confirmPassword);
   };
 
+  const verifyEmail = async (email, otp) => {
+    const data = await api.verifyEmailUser(email, otp);
+    if (data.access && data.refresh) {
+      localStorage.setItem('mailflow-access-token', data.access);
+      localStorage.setItem('mailflow-refresh-token', data.refresh);
+      setIsLoggedIn(true);
+      setUser(data.user);
+    }
+    return data;
+  };
+
   const logout = () => {
     api.logoutUser();
     setUser(null);
@@ -78,6 +89,7 @@ export function AuthProvider({ children }) {
       login,
       logout,
       register,
+      verifyEmail,
       updateProfile,
       changePassword,
       getBackendUrl: api.getBackendUrl,

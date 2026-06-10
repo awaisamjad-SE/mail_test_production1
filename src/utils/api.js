@@ -125,8 +125,22 @@ export const forgotPassword = async (email) => {
   return response.data;
 };
 
-export const resetPassword = async (token, password) => {
-  const response = await api.post('/api/auth/reset-password/', { token, password });
+export const resetPassword = async (email, otp, password) => {
+  const response = await api.post('/api/auth/reset-password/', {
+    email,
+    otp,
+    new_password: password
+  });
+  return response.data;
+};
+
+export const verifyEmailUser = async (email, otp) => {
+  const response = await api.post('/api/auth/verify-email/', { email, otp });
+  return response.data;
+};
+
+export const resendOTPUser = async (email, reason) => {
+  const response = await api.post('/api/auth/resend-otp/', { email, reason });
   return response.data;
 };
 

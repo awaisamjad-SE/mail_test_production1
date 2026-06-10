@@ -34,6 +34,8 @@ services:
   backend:
     build: ./backend
     restart: always
+    env_file:
+      - .env
     command: >
       sh -c "python manage.py collectstatic --noinput && \
              python manage.py migrate && \
@@ -73,6 +75,8 @@ services:
   celery_worker:
     build: ./backend
     restart: always
+    env_file:
+      - .env
     command: celery -A mailflow_backend worker --loglevel=info
     environment:
       - DEBUG=False
