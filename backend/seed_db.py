@@ -1,6 +1,6 @@
 import os
 from cryptography.fernet import Fernet
-
+#Comments
 # Define env file path
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 
