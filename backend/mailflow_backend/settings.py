@@ -21,6 +21,9 @@ ALLOWED_HOSTS = [h.strip() for h in raw_hosts.split(',') if h.strip()]
 raw_csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://mail.awaisamjad.engineer,http://localhost:8000,http://127.0.0.1:8000')
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_origins.split(',') if o.strip()]
 
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+
 # Application definition
 
 INSTALLED_APPS = [
