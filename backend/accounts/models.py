@@ -31,6 +31,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     password_reset_otp = models.CharField(max_length=6, blank=True, null=True)
     email_verification_otp_created_at = models.DateTimeField(blank=True, null=True)
     password_reset_otp_created_at = models.DateTimeField(blank=True, null=True)
+    
+    # Advanced Security Auditing
+    failed_login_attempts = models.IntegerField(default=0)
+    last_failed_login = models.DateTimeField(blank=True, null=True)
 
     objects = CustomUserManager()
 
@@ -39,3 +43,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+class UserDevice(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='devices')
+    user_agent = models.TextField()
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    last_login = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'user_agent')
+
+    def __str__(self):
+        return f"{self.user.email} - {self.ip_address}"
+

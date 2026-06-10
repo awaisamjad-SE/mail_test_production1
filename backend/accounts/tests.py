@@ -193,4 +193,82 @@ class AccountsAuthTests(APITestCase):
         login_response = self.client.post(self.login_url, login_data, format='json')
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
 
+    def test_failed_login_attempts_alert(self):
+        # Create verified user
+        user = User.objects.create_user(
+            email=self.user_data['email'],
+            full_name=self.user_data['full_name'],
+            password=self.user_data['password']
+        )
+        user.is_email_verified = True
+        user.save()
+
+        # Clear outbox
+        mail.outbox.clear()
+
+        # Try logging in with WRONG password 3 times
+        login_data = {
+            'email': self.user_data['email'],
+            'password': 'WrongPasswordXYZ'
+        }
+        for _ in range(3):
+            self.client.post(self.login_url, login_data, format='json')
+
+        # Check database count
+        user.refresh_from_db()
+        self.assertEqual(user.failed_login_attempts, 3)
+
+        # Check that warning email was sent
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Multiple Failed Login Attempts", mail.outbox[0].subject)
+
+        # Log in with CORRECT password
+        correct_login_data = {
+            'email': self.user_data['email'],
+            'password': self.user_data['password']
+        }
+        response = self.client.post(self.login_url, correct_login_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Check that failed count was reset to 0
+        user.refresh_from_db()
+        self.assertEqual(user.failed_login_attempts, 0)
+
+    def test_new_device_login_alert(self):
+        # Create verified user
+        user = User.objects.create_user(
+            email=self.user_data['email'],
+            full_name=self.user_data['full_name'],
+            password=self.user_data['password']
+        )
+        user.is_email_verified = True
+        user.save()
+
+        # Clear outbox
+        mail.outbox.clear()
+
+        # Log in from a specific User-Agent
+        correct_login_data = {
+            'email': self.user_data['email'],
+            'password': self.user_data['password']
+        }
+        self.client.credentials(HTTP_USER_AGENT='Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0')
+        response = self.client.post(self.login_url, correct_login_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Verify that the new device email alert was sent
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("New Device Login Detected", mail.outbox[0].subject)
+
+        # Clear outbox
+        mail.outbox.clear()
+
+        # Log in again from the SAME User-Agent
+        response = self.client.post(self.login_url, correct_login_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Verify that NO duplicate email was sent (device is already known)
+        self.assertEqual(len(mail.outbox), 0)
+
+
 

@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from .models import UserDevice
 
 User = get_user_model()
 
@@ -16,5 +17,14 @@ class CustomUserAdmin(admin.ModelAdmin):
         ('Personal Info', {'fields': ('full_name',)}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Verification & OTP', {'fields': ('is_email_verified', 'email_verification_otp', 'email_verification_otp_created_at', 'password_reset_otp', 'password_reset_otp_created_at')}),
+        ('Security auditing', {'fields': ('failed_login_attempts', 'last_failed_login')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
+
+@admin.register(UserDevice)
+class UserDeviceAdmin(admin.ModelAdmin):
+    list_display = ('user', 'ip_address', 'created_at', 'last_login')
+    list_filter = ('created_at', 'last_login')
+    search_fields = ('user__email', 'ip_address', 'user_agent')
+    raw_id_fields = ('user',)
+    ordering = ('-created_at',)
