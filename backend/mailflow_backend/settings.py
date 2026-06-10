@@ -18,6 +18,9 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 raw_hosts = os.getenv('ALLOWED_HOSTS', '*')
 ALLOWED_HOSTS = [h.strip() for h in raw_hosts.split(',') if h.strip()]
 
+raw_csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://mail.awaisamjad.engineer,http://localhost:8000,http://127.0.0.1:8000')
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_origins.split(',') if o.strip()]
+
 # Application definition
 
 INSTALLED_APPS = [
