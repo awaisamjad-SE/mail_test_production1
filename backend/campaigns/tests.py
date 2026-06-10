@@ -20,6 +20,9 @@ class CampaignsTests(APITestCase):
             full_name='User Name',
             password='Password123'
         )
+        self.user.is_email_verified = True
+        self.user.save()
+
         
         # Authenticate
         login_res = self.client.post(reverse('token_obtain_pair'), {

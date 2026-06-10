@@ -26,10 +26,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
         return user
 
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'email', 'full_name', 'date_joined')
+        fields = ('id', 'email', 'full_name', 'is_email_verified', 'date_joined')
         read_only_fields = ('id', 'date_joined')
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -41,3 +43,14 @@ class ChangePasswordSerializer(serializers.Serializer):
         if attrs['new_password'] != attrs['confirm_new_password']:
             raise serializers.ValidationError({"new_password": "New passwords do not match."})
         return attrs
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        if not self.user.is_email_verified:
+            raise serializers.ValidationError({
+                "detail": "Email not verified.",
+                "email_unverified": True,
+                "email": self.user.email
+            })
+        return data
