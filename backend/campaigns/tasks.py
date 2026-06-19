@@ -1,6 +1,9 @@
 import smtplib
+import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 from django.utils import timezone
 from celery import shared_task
 from django.db import transaction
@@ -10,7 +13,7 @@ from smtp_settings.models import SMTPCredential
 from mailflow_backend.encryption import decrypt_password
 
 @shared_task(bind=True, max_retries=3)
-def send_email_task(self, email_log_id):
+def send_email_task(self, email_log_id, attachment_name=None, attachment_data=None):
     try:
         log = EmailLog.objects.get(id=email_log_id)
     except EmailLog.DoesNotExist:
@@ -72,18 +75,43 @@ def send_email_task(self, email_log_id):
         return "Invalid SMTP config."
 
     # 4. Formulate email message
-    msg = MIMEMultipart('alternative')
+    if attachment_data:
+        msg = MIMEMultipart('mixed')
+    else:
+        msg = MIMEMultipart('alternative')
+        
     msg['Subject'] = log.subject
     msg['From'] = f"MailFlow <{smtp.gmail_address}>"
     msg['To'] = log.recipient
     
-    # Check if body contains HTML tags
+    # Body part wrapper
+    body_part = MIMEMultipart('alternative')
     is_html = log.body.strip().startswith('<!DOCTYPE html>') or '<html' in log.body.lower() or '<div' in log.body.lower()
     if is_html:
-        msg.attach(MIMEText(log.body, 'html', 'utf-8'))
+        body_part.attach(MIMEText(log.body, 'html', 'utf-8'))
     else:
-        # Convert plain text to simple HTML with paragraphs to keep it styled
-        msg.attach(MIMEText(log.body, 'plain', 'utf-8'))
+        body_part.attach(MIMEText(log.body, 'plain', 'utf-8'))
+        
+    if attachment_data:
+        msg.attach(body_part)
+        try:
+            # Decode the base64 string
+            raw_bytes = base64.b64decode(attachment_data)
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(raw_bytes)
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', f'attachment; filename="{attachment_name}"')
+            msg.attach(part)
+        except Exception as attach_err:
+            # If attachment fails, log error but proceed with sending the main email body
+            log.error_message = f"Attachment error: {str(attach_err)}"
+            log.save()
+    else:
+        # If no attachment, attach body text directly to top level message
+        if is_html:
+            msg.attach(MIMEText(log.body, 'html', 'utf-8'))
+        else:
+            msg.attach(MIMEText(log.body, 'plain', 'utf-8'))
 
     # 5. Connect and Send
     try:

@@ -62,6 +62,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
         pass
 
     def create(self, request, *args, **kwargs):
+        import json
+        import base64
         user = request.user
         data = request.data
         
@@ -71,11 +73,25 @@ class CampaignViewSet(viewsets.ModelViewSet):
         body = data.get('body', '')
         recipients = data.get('recipients', []) # Expected list: [{"email": "...", "name": "...", "variables": {...}}]
 
+        if isinstance(recipients, str):
+            try:
+                recipients = json.loads(recipients)
+            except json.JSONDecodeError:
+                return Response({"error": "Invalid recipients JSON string format."}, status=status.HTTP_400_BAD_REQUEST)
+
         if not subject or not body:
             return Response({"error": "Subject and Body fields are required."}, status=status.HTTP_400_BAD_REQUEST)
 
         if not recipients or len(recipients) == 0:
             return Response({"error": "At least one recipient is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Handle in-memory Base64 attachment encoding
+        file_obj = request.FILES.get('attachment')
+        attachment_name = None
+        attachment_data = None
+        if file_obj:
+            attachment_name = file_obj.name
+            attachment_data = base64.b64encode(file_obj.read()).decode('utf-8')
 
         # Create Campaign
         campaign = Campaign.objects.create(
@@ -120,8 +136,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 status='PENDING'
             )
 
-            # Trigger Celery background task
-            send_email_task.delay(log.id)
+            # Trigger Celery background task with attachment parameters
+            send_email_task.delay(log.id, attachment_name, attachment_data)
 
         return Response(CampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
 

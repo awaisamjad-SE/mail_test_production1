@@ -11,6 +11,7 @@ import imgBulk from '../assets/snippet-bulk.jpg';
 
 export default function BulkSend({ onNavigateToTracker }) {
   const [csvData, setCsvData] = useState(null);
+  const [file, setFile] = useState(null);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [replyTo, setReplyTo] = useState('');
@@ -82,20 +83,33 @@ export default function BulkSend({ onNavigateToTracker }) {
     if (!csvData || !subject || !body) return;
     setSending(true);
 
-    const payload = {
-      name: `Bulk Campaign (${csvData.validCount} contacts)`,
-      campaign_type: 'BULK_SEND',
-      subject: subject,
-      body: body,
-      recipients: csvData.validRows.map(row => ({
-        email: row.email,
-        name: row.name || '',
-        variables: {
-          Name: row.name || '',
-          ...row.raw
-        }
-      }))
-    };
+    const recipients = csvData.validRows.map(row => ({
+      email: row.email,
+      name: row.name || '',
+      variables: {
+        Name: row.name || '',
+        ...row.raw
+      }
+    }));
+
+    let payload;
+    if (file) {
+      payload = new FormData();
+      payload.append('name', `Bulk Campaign (${csvData.validCount} contacts)`);
+      payload.append('campaign_type', 'BULK_SEND');
+      payload.append('subject', subject);
+      payload.append('body', body);
+      payload.append('recipients', JSON.stringify(recipients));
+      payload.append('attachment', file);
+    } else {
+      payload = {
+        name: `Bulk Campaign (${csvData.validCount} contacts)`,
+        campaign_type: 'BULK_SEND',
+        subject: subject,
+        body: body,
+        recipients
+      };
+    }
 
     try {
       await sendEmails(payload);
@@ -107,6 +121,7 @@ export default function BulkSend({ onNavigateToTracker }) {
       setSubject('');
       setBody('');
       setCsvData(null);
+      setFile(null);
 
       if (onNavigateToTracker) {
         setTimeout(() => {
@@ -377,6 +392,33 @@ export default function BulkSend({ onNavigateToTracker }) {
                   />
                 </label>
               </div>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium flex items-center justify-between">
+                  <span>File Attachment <span className="text-[11px] text-muted-foreground font-normal">(optional, e.g. PDF resume)</span></span>
+                  {file && (
+                    <button
+                      type="button"
+                      onClick={() => setFile(null)}
+                      className="text-[10px] text-rose-500 font-bold uppercase tracking-wider hover:underline cursor-pointer"
+                    >
+                      Remove File
+                    </button>
+                  )}
+                </span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="file"
+                    onChange={(e) => setFile(e.target.files[0] || null)}
+                    className="input text-xs file:hidden cursor-pointer"
+                  />
+                </div>
+                {file && (
+                  <p className="text-[11px] text-lime font-mono">
+                    Selected file: {file.name} ({Math.round(file.size / 1024)} KB)
+                  </p>
+                )}
+              </label>
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">

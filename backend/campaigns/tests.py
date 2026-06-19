@@ -67,6 +67,33 @@ class CampaignsTests(APITestCase):
         # Verify Celery task is triggered
         self.assertEqual(mock_send_email.call_count, 2)
 
+    @patch('campaigns.views.send_email_task.delay')
+    def test_create_campaign_with_file_attachment(self, mock_send_email):
+        import base64
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        # Create a mock file
+        test_file = SimpleUploadedFile("resume.pdf", b"pdf content", content_type="application/pdf")
+        
+        payload = {
+            'name': 'Test Attachment Campaign',
+            'campaign_type': 'QUICK_SEND',
+            'subject': 'Application - {{Name}}',
+            'body': 'Hi, please see attached my resume.',
+            'recipients': '[{"email": "job@example.com", "name": "HR"}]',
+            'attachment': test_file
+        }
+        
+        response = self.client.post(self.campaigns_url, payload, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        
+        # Verify Celery task is called with correct parameters (log.id, filename, base64_data)
+        self.assertEqual(mock_send_email.call_count, 1)
+        args, kwargs = mock_send_email.call_args
+        self.assertEqual(args[1], 'resume.pdf')
+        # Base64 string for b"pdf content" is "cGRmIGNvbnRlbnQ="
+        self.assertEqual(args[2], 'cGRmIGNvbnRlbnQ=')
+
     def test_template_crud(self):
         payload = {
             'name': 'Welcome Template',

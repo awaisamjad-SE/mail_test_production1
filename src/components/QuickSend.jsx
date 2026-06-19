@@ -8,6 +8,7 @@ import imgQuick from '../assets/snippet-quick.jpg';
 
 export default function QuickSend({ onNavigateToTracker }) {
   const [form, setForm] = useState({ to: '', subject: '', body: '', replyTo: '' });
+  const [file, setFile] = useState(null);
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -20,19 +21,32 @@ export default function QuickSend({ onNavigateToTracker }) {
     if (!isValid) return;
     setSending(true);
     try {
-      const payload = {
-        name: `Quick Send to ${form.to}`,
-        campaign_type: 'QUICK_SEND',
-        subject: form.subject,
-        body: form.body,
-        recipients: [
-          {
-            email: form.to,
-            name: form.to.split('@')[0],
-            variables: {}
-          }
-        ]
-      };
+      const recipients = [
+        {
+          email: form.to,
+          name: form.to.split('@')[0],
+          variables: {}
+        }
+      ];
+
+      let payload;
+      if (file) {
+        payload = new FormData();
+        payload.append('name', `Quick Send to ${form.to}`);
+        payload.append('campaign_type', 'QUICK_SEND');
+        payload.append('subject', form.subject);
+        payload.append('body', form.body);
+        payload.append('recipients', JSON.stringify(recipients));
+        payload.append('attachment', file);
+      } else {
+        payload = {
+          name: `Quick Send to ${form.to}`,
+          campaign_type: 'QUICK_SEND',
+          subject: form.subject,
+          body: form.body,
+          recipients
+        };
+      }
       
       await sendEmails(payload);
       setToast({ 
@@ -41,6 +55,7 @@ export default function QuickSend({ onNavigateToTracker }) {
         details: `Processing send-job to ${form.to}` 
       });
       setForm({ to: '', subject: '', body: '', replyTo: '' });
+      setFile(null);
       
       if (onNavigateToTracker) {
         setTimeout(() => {
@@ -60,6 +75,7 @@ export default function QuickSend({ onNavigateToTracker }) {
 
   const handleClear = () => {
     setForm({ to: '', subject: '', body: '', replyTo: '' });
+    setFile(null);
   };
 
   return (
@@ -153,6 +169,33 @@ export default function QuickSend({ onNavigateToTracker }) {
               className="input"
               required
             />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-medium flex items-center justify-between">
+              <span>File Attachment <span className="text-[11px] text-muted-foreground font-normal">(optional, e.g. PDF resume)</span></span>
+              {file && (
+                <button
+                  type="button"
+                  onClick={() => setFile(null)}
+                  className="text-[10px] text-rose-500 font-bold uppercase tracking-wider hover:underline cursor-pointer"
+                >
+                  Remove File
+                </button>
+              )}
+            </span>
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                onChange={(e) => setFile(e.target.files[0] || null)}
+                className="input text-xs file:hidden cursor-pointer"
+              />
+            </div>
+            {file && (
+              <p className="text-[11px] text-lime font-mono">
+                Selected file: {file.name} ({Math.round(file.size / 1024)} KB)
+              </p>
+            )}
           </label>
 
           <div className="space-y-2">

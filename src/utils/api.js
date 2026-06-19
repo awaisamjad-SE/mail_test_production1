@@ -171,7 +171,14 @@ export const testSMTP = async () => {
 
 // Campaigns & Sending
 export const sendEmails = async (campaignPayload) => {
-  // campaignPayload should contain: name, campaign_type, subject, body, recipients
+  if (campaignPayload instanceof FormData) {
+    const response = await api.post('/api/campaigns/', campaignPayload, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
   const response = await api.post('/api/campaigns/', campaignPayload);
   return response.data;
 };

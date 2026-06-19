@@ -8,6 +8,7 @@ import imgCsv from '../assets/snippet-csv.jpg';
 
 export default function PersonalizedCSV({ onNavigateToTracker }) {
   const [csvData, setCsvData] = useState(null);
+  const [file, setFile] = useState(null);
   const [replyTo, setReplyTo] = useState('');
   const [sending, setSending] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
@@ -60,21 +61,34 @@ export default function PersonalizedCSV({ onNavigateToTracker }) {
     if (!csvData) return;
     setSending(true);
 
-    const payload = {
-      name: `Personalized Campaign (${csvData.validCount} rows)`,
-      campaign_type: 'PERSONALIZED',
-      subject: '{{Subject}}',
-      body: '{{Body}}',
-      recipients: csvData.validRows.map(row => ({
-        email: row.email,
-        name: row.name || row.email.split('@')[0],
-        variables: {
-          Subject: row.subject,
-          Body: row.body,
-          ...row.raw
-        }
-      }))
-    };
+    const recipients = csvData.validRows.map(row => ({
+      email: row.email,
+      name: row.name || row.email.split('@')[0],
+      variables: {
+        Subject: row.subject,
+        Body: row.body,
+        ...row.raw
+      }
+    }));
+
+    let payload;
+    if (file) {
+      payload = new FormData();
+      payload.append('name', `Personalized Campaign (${csvData.validCount} rows)`);
+      payload.append('campaign_type', 'PERSONALIZED');
+      payload.append('subject', '{{Subject}}');
+      payload.append('body', '{{Body}}');
+      payload.append('recipients', JSON.stringify(recipients));
+      payload.append('attachment', file);
+    } else {
+      payload = {
+        name: `Personalized Campaign (${csvData.validCount} rows)`,
+        campaign_type: 'PERSONALIZED',
+        subject: '{{Subject}}',
+        body: '{{Body}}',
+        recipients
+      };
+    }
 
     try {
       await sendEmails(payload);
@@ -84,6 +98,7 @@ export default function PersonalizedCSV({ onNavigateToTracker }) {
         details: `Processing ${csvData.validCount} custom emails in backend queue.` 
       });
       setCsvData(null);
+      setFile(null);
       
       if (onNavigateToTracker) {
         setTimeout(() => {
@@ -334,6 +349,33 @@ export default function PersonalizedCSV({ onNavigateToTracker }) {
                   placeholder="reply@example.com"
                   className="input"
                 />
+              </label>
+
+              <label className="block space-y-2 pt-2">
+                <span className="text-sm font-medium flex items-center justify-between">
+                  <span>File Attachment <span className="text-[11px] text-muted-foreground font-normal">(optional, e.g. PDF resume)</span></span>
+                  {file && (
+                    <button
+                      type="button"
+                      onClick={() => setFile(null)}
+                      className="text-[10px] text-rose-500 font-bold uppercase tracking-wider hover:underline cursor-pointer"
+                    >
+                      Remove File
+                    </button>
+                  )}
+                </span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="file"
+                    onChange={(e) => setFile(e.target.files[0] || null)}
+                    className="input text-xs file:hidden cursor-pointer"
+                  />
+                </div>
+                {file && (
+                  <p className="text-[11px] text-lime font-mono">
+                    Selected file: {file.name} ({Math.round(file.size / 1024)} KB)
+                  </p>
+                )}
               </label>
             </div>
           )}

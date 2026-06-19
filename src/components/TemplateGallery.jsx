@@ -12,6 +12,7 @@ import imgTemplates from '../assets/snippet-templates.jpg';
 export default function TemplateGallery({ onNavigateToTracker }) {
   const [selected, setSelected] = useState(null);
   const [csvData, setCsvData] = useState(null);
+  const [file, setFile] = useState(null);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [replyTo, setReplyTo] = useState('');
@@ -68,6 +69,7 @@ export default function TemplateGallery({ onNavigateToTracker }) {
   const handleBack = () => {
     setSelected(null);
     setCsvData(null);
+    setFile(null);
     setSubject('');
     setBody('');
     setReplyTo('');
@@ -94,20 +96,33 @@ export default function TemplateGallery({ onNavigateToTracker }) {
     if (!csvData || !subject || !body) return;
     setSending(true);
 
-    const payload = {
-      name: `Template Campaign: ${selected.name}`,
-      campaign_type: 'BULK_SEND',
-      subject: subject,
-      body: body,
-      recipients: csvData.validRows.map(row => ({
-        email: row.email,
-        name: row.name || '',
-        variables: {
-          Name: row.name || '',
-          ...row.raw
-        }
-      }))
-    };
+    const recipients = csvData.validRows.map(row => ({
+      email: row.email,
+      name: row.name || '',
+      variables: {
+        Name: row.name || '',
+        ...row.raw
+      }
+    }));
+
+    let payload;
+    if (file) {
+      payload = new FormData();
+      payload.append('name', `Template Campaign: ${selected.name}`);
+      payload.append('campaign_type', 'BULK_SEND');
+      payload.append('subject', subject);
+      payload.append('body', body);
+      payload.append('recipients', JSON.stringify(recipients));
+      payload.append('attachment', file);
+    } else {
+      payload = {
+        name: `Template Campaign: ${selected.name}`,
+        campaign_type: 'BULK_SEND',
+        subject: subject,
+        body: body,
+        recipients
+      };
+    }
 
     try {
       await sendEmails(payload);
@@ -117,6 +132,7 @@ export default function TemplateGallery({ onNavigateToTracker }) {
         details: `Processing ${csvData.validCount} emails in background queue.` 
       });
       handleBack();
+      setFile(null);
 
       if (onNavigateToTracker) {
         setTimeout(() => {
@@ -380,6 +396,36 @@ export default function TemplateGallery({ onNavigateToTracker }) {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="rounded-3xl glass border border-border p-6 space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">3. File Attachment</h3>
+            <label className="block space-y-2">
+              <span className="text-sm font-medium flex items-center justify-between">
+                <span>Upload File <span className="text-[11px] text-muted-foreground font-normal">(optional, e.g. PDF resume)</span></span>
+                {file && (
+                  <button
+                    type="button"
+                    onClick={() => setFile(null)}
+                    className="text-[10px] text-rose-500 font-bold uppercase tracking-wider hover:underline cursor-pointer"
+                  >
+                    Remove File
+                  </button>
+                )}
+              </span>
+              <div className="flex items-center gap-3">
+                <input
+                  type="file"
+                  onChange={(e) => setFile(e.target.files[0] || null)}
+                  className="input text-xs file:hidden cursor-pointer"
+                />
+              </div>
+              {file && (
+                <p className="text-[11px] text-lime font-mono">
+                  Selected file: {file.name} ({Math.round(file.size / 1024)} KB)
+                </p>
+              )}
+            </label>
           </div>
 
           <div className="rounded-3xl glass border border-border p-6">
