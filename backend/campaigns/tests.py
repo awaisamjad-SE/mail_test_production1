@@ -90,9 +90,26 @@ class CampaignsTests(APITestCase):
         # Verify Celery task is called with correct parameters (log.id, filename, base64_data)
         self.assertEqual(mock_send_email.call_count, 1)
         args, kwargs = mock_send_email.call_args
+        self.assertIsInstance(args[0], str)  # Verify log_id is serialized to string
         self.assertEqual(args[1], 'resume.pdf')
         # Base64 string for b"pdf content" is "cGRmIGNvbnRlbnQ="
         self.assertEqual(args[2], 'cGRmIGNvbnRlbnQ=')
+
+    @patch('campaigns.views.send_email_task.delay')
+    def test_create_campaign_with_multipart_list_of_strings_recipients(self, mock_send_email):
+        payload = {
+            'name': 'Test Multipart List Campaign',
+            'campaign_type': 'QUICK_SEND',
+            'subject': 'Hello',
+            'body': 'World',
+            # Simulating list of strings that contains a JSON string
+            'recipients': ['[{"email": "list1@example.com", "name": "List1"}]'],
+        }
+        response = self.client.post(self.campaigns_url, payload, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(mock_send_email.call_count, 1)
+        args, kwargs = mock_send_email.call_args
+        self.assertIsInstance(args[0], str)
 
     def test_template_crud(self):
         payload = {

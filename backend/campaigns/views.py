@@ -73,11 +73,30 @@ class CampaignViewSet(viewsets.ModelViewSet):
         body = data.get('body', '')
         recipients = data.get('recipients', []) # Expected list: [{"email": "...", "name": "...", "variables": {...}}]
 
+        # Robust recipients parsing for both application/json and multipart/form-data
         if isinstance(recipients, str):
             try:
                 recipients = json.loads(recipients)
             except json.JSONDecodeError:
                 return Response({"error": "Invalid recipients JSON string format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if isinstance(recipients, list):
+            parsed_recipients = []
+            for item in recipients:
+                if isinstance(item, str):
+                    try:
+                        parsed_item = json.loads(item)
+                        if isinstance(parsed_item, list):
+                            parsed_recipients.extend(parsed_item)
+                        elif isinstance(parsed_item, dict):
+                            parsed_recipients.append(parsed_item)
+                        else:
+                            parsed_recipients.append({"email": item})
+                    except (json.JSONDecodeError, TypeError):
+                        parsed_recipients.append({"email": item})
+                elif isinstance(item, dict):
+                    parsed_recipients.append(item)
+            recipients = parsed_recipients
 
         if not subject or not body:
             return Response({"error": "Subject and Body fields are required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -136,8 +155,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 status='PENDING'
             )
 
-            # Trigger Celery background task with attachment parameters
-            send_email_task.delay(log.id, attachment_name, attachment_data)
+            # Trigger Celery background task with attachment parameters (cast log.id to string for JSON serialization)
+            send_email_task.delay(str(log.id), attachment_name, attachment_data)
 
         return Response(CampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
 
