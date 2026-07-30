@@ -150,10 +150,15 @@ export const fetchSMTP = async () => {
   return response.data;
 };
 
-export const saveSMTP = async (gmailAddress, appPassword) => {
-  const payload = { gmail_address: gmailAddress };
-  if (appPassword) {
-    payload.app_password = appPassword;
+export const saveSMTP = async (smtpDataOrAddress, appPassword) => {
+  let payload = {};
+  if (typeof smtpDataOrAddress === 'object' && smtpDataOrAddress !== null) {
+    payload = { ...smtpDataOrAddress };
+  } else {
+    payload = { gmail_address: smtpDataOrAddress };
+    if (appPassword) {
+      payload.app_password = appPassword;
+    }
   }
   const response = await api.post('/api/smtp/', payload);
   return response.data;

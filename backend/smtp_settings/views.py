@@ -45,6 +45,10 @@ class SMTPCredentialView(APIView):
             return Response(data)
         except SMTPCredential.DoesNotExist:
             return Response({
+                "provider": "gmail",
+                "smtp_host": "smtp.gmail.com",
+                "smtp_port": 587,
+                "use_ssl": False,
                 "gmail_address": "",
                 "is_verified": False,
                 "emails_sent_today": 0,
@@ -83,16 +87,24 @@ class SMTPTestConnectionView(APIView):
         try:
             smtp = SMTPCredential.objects.get(user=request.user)
             if not smtp.encrypted_app_password:
-                return Response({"status": "Failed", "error": "Gmail App Password not set."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"status": "Failed", "error": "SMTP Password not set."}, status=status.HTTP_400_BAD_REQUEST)
 
             password = decrypt_password(smtp.encrypted_app_password)
             if not smtp.gmail_address or not password:
                 return Response({"status": "Failed", "error": "Invalid configuration details."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Test connection to Google SMTP servers
+            # Test connection to SMTP server dynamically
             try:
-                server = smtplib.SMTP('smtp.gmail.com', 587, timeout=10)
-                server.starttls()
+                host = smtp.smtp_host or ('smtp.gmail.com' if smtp.provider == 'gmail' else 'mail.fastnexa.com')
+                port = int(smtp.smtp_port or (587 if smtp.provider == 'gmail' else 465))
+                use_ssl = smtp.use_ssl or (port == 465)
+
+                if use_ssl or port == 465:
+                    server = smtplib.SMTP_SSL(host, port, timeout=10)
+                else:
+                    server = smtplib.SMTP(host, port, timeout=10)
+                    server.starttls()
+
                 server.login(smtp.gmail_address, password)
                 server.quit()
 
@@ -100,8 +112,8 @@ class SMTPTestConnectionView(APIView):
                 smtp.is_verified = True
                 smtp.save()
 
-                ActivityLog.objects.create(user=request.user, action="SMTP Connection Test Successful")
-                return Response({"status": "Success", "message": "Gmail SMTP connection verified successfully."})
+                ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Successful ({host})")
+                return Response({"status": "Success", "message": f"SMTP connection ({host}:{port}) verified successfully."})
             except Exception as e:
                 smtp.is_verified = False
                 smtp.save()
