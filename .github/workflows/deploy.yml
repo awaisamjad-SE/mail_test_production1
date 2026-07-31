@@ -58,8 +58,9 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.KEY }}
           port: 22
+          timeout: 60s
           command_timeout: 30m
           script: |
             cd mail_test_production1
-            git pull
+            git pull origin main
             docker compose up -d --build
