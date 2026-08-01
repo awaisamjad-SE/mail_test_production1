@@ -40,3 +40,6 @@ ENV/
 .env.*
 !.env.example
 
+# Test scripts
+file.py
+

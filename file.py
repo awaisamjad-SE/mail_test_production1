@@ -1,3 +1,4 @@
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -6,7 +7,7 @@ SMTP_SERVER = "mail.fastnexa.com"
 SMTP_PORT = 465
 
 USERNAME = "awaisamjad@fastnexa.com"
-PASSWORD = "Qwerty@1828"
+PASSWORD = os.getenv("SMTP_PASSWORD", "")
 
 msg = MIMEMultipart()
 msg["Subject"] = "MailFlow System Test Notification"
