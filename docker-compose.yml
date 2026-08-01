@@ -46,7 +46,7 @@ services:
       - ./media:/app/media
     environment:
       - DEBUG=False
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend,mail.awaisamjad.engineer,34.234.65.13,*}
       - SECRET_KEY=${SECRET_KEY:-django-production-secret-key-999}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-oOpiUs4DQSFC54MZ43NxFjWSS5JcUUBvnnHLGd4Alsk=}
       - DATABASE_URL=postgresql://${DB_USER:-mailflow_user}:${DB_PASSWORD:-securepass123}@db:5432/${DB_NAME:-mailflow}
@@ -82,7 +82,7 @@ services:
     command: celery -A mailflow_backend worker --loglevel=info
     environment:
       - DEBUG=False
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,backend,mail.awaisamjad.engineer,34.234.65.13,*}
       - SECRET_KEY=${SECRET_KEY:-django-production-secret-key-999}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-oOpiUs4DQSFC54MZ43NxFjWSS5JcUUBvnnHLGd4Alsk=}
       - DATABASE_URL=postgresql://${DB_USER:-mailflow_user}:${DB_PASSWORD:-securepass123}@db:5432/${DB_NAME:-mailflow}
