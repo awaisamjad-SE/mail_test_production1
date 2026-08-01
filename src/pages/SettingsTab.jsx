@@ -558,27 +558,30 @@ export default function SettingsTab() {
                   {smtpLoading ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Save settings'}
                 </button>
                 
-                {smtpData?.has_password && smtpData?.provider === provider && (
+                {smtpData?.provider === provider && (
                   <>
                     <button
                       type="button"
                       onClick={handleTestSMTP}
-                      disabled={testingConnection || smtpLoading}
-                      className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-sm flex items-center justify-center gap-2 cursor-pointer transition flex-1"
+                      disabled={testingConnection || smtpLoading || !smtpData?.has_password}
+                      className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-sm flex items-center justify-center gap-2 cursor-pointer transition flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={!smtpData?.has_password ? "Please save credentials first to test connection" : "Test SMTP connection"}
                     >
                       {testingConnection ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
                       <span>Test connection</span>
                     </button>
                     
-                    <button
-                      type="button"
-                      onClick={handleDeleteSMTP}
-                      disabled={smtpLoading}
-                      className="p-2.5 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-border text-rose-500 hover:border-rose-500/25 transition cursor-pointer"
-                      title="Delete Credentials"
-                    >
-                      <Trash2 className="size-4.5" />
-                    </button>
+                    {smtpData?.has_password && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteSMTP}
+                        disabled={smtpLoading}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-border text-rose-500 hover:border-rose-500/25 transition cursor-pointer"
+                        title="Delete Credentials"
+                      >
+                        <Trash2 className="size-4.5" />
+                      </button>
+                    )}
                   </>
                 )}
               </div>
