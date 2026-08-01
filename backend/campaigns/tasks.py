@@ -75,27 +75,20 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
         return "Invalid SMTP config."
 
     # 4. Formulate email message
+    is_html = log.body.strip().startswith('<!DOCTYPE html>') or '<html' in log.body.lower() or '<div' in log.body.lower()
+    from_name = user.full_name or 'MailFlow'
+
     if attachment_data:
         msg = MIMEMultipart('mixed')
-    else:
-        msg = MIMEMultipart('alternative')
-        
-    msg['Subject'] = log.subject
-    msg['From'] = f"MailFlow <{smtp.gmail_address}>"
-    msg['To'] = log.recipient
-    
-    # Body part wrapper
-    body_part = MIMEMultipart('alternative')
-    is_html = log.body.strip().startswith('<!DOCTYPE html>') or '<html' in log.body.lower() or '<div' in log.body.lower()
-    if is_html:
-        body_part.attach(MIMEText(log.body, 'html', 'utf-8'))
-    else:
-        body_part.attach(MIMEText(log.body, 'plain', 'utf-8'))
-        
-    if attachment_data:
+        msg['Subject'] = log.subject
+        msg['From'] = f"{from_name} <{smtp.gmail_address}>"
+        msg['To'] = log.recipient
+
+        body_part = MIMEMultipart('alternative')
+        body_part.attach(MIMEText(log.body, 'html' if is_html else 'plain', 'utf-8'))
         msg.attach(body_part)
+
         try:
-            # Decode the base64 string
             raw_bytes = base64.b64decode(attachment_data)
             part = MIMEBase('application', 'octet-stream')
             part.set_payload(raw_bytes)
@@ -103,15 +96,22 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
             part.add_header('Content-Disposition', f'attachment; filename="{attachment_name}"')
             msg.attach(part)
         except Exception as attach_err:
-            # If attachment fails, log error but proceed with sending the main email body
             log.error_message = f"Attachment error: {str(attach_err)}"
             log.save()
     else:
-        # If no attachment, attach body text directly to top level message
         if is_html:
+            msg = MIMEMultipart('alternative')
+            # Add plain text fallback and HTML
+            plain_fallback = log.body.replace('<br>', '\n').replace('<p>', '\n').replace('</p>', '')
+            msg.attach(MIMEText(plain_fallback, 'plain', 'utf-8'))
             msg.attach(MIMEText(log.body, 'html', 'utf-8'))
         else:
+            msg = MIMEMultipart()
             msg.attach(MIMEText(log.body, 'plain', 'utf-8'))
+
+        msg['Subject'] = log.subject
+        msg['From'] = f"{from_name} <{smtp.gmail_address}>"
+        msg['To'] = log.recipient
 
     # 5. Connect and Send
     try:
