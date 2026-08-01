@@ -3,16 +3,11 @@ import axios from 'axios';
 export const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'https://mail.awaisamjad.engineer';
 
 export const getBackendUrl = () => {
-  localStorage.removeItem('mailflow-backend-url');
   return DEFAULT_BACKEND_URL;
 };
 
 export const setBackendUrl = (url) => {
-  if (url && url.trim() !== '') {
-    localStorage.setItem('mailflow-backend-url', url.trim());
-  } else {
-    localStorage.removeItem('mailflow-backend-url');
-  }
+  // no-op
 };
 
 const api = axios.create();
