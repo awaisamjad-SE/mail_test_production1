@@ -33,6 +33,7 @@ services:
 
   backend:
     build: ./backend
+    image: ghcr.io/awaisamjad-se/mail_test_production1/backend:latest
     restart: always
     env_file:
       - .env
@@ -74,6 +75,7 @@ services:
 
   celery_worker:
     build: ./backend
+    image: ghcr.io/awaisamjad-se/mail_test_production1/backend:latest
     restart: always
     env_file:
       - .env

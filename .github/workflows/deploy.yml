@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Run Tests and Build Check
+    name: Backend Tests & Build Verification
     runs-on: ubuntu-latest
 
     steps:
@@ -42,10 +42,48 @@ jobs:
       - name: Run Frontend Build Verification
         run: npm run build
 
+  build:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Lowercase Repository Name
+        id: repo
+        run: echo "REPO_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ env.REPO_LOWER }}/backend:latest
+            ghcr.io/${{ env.REPO_LOWER }}/backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
-    needs: test
+    needs: build
 
     steps:
       - name: Checkout Code
@@ -59,8 +97,9 @@ jobs:
           key: ${{ secrets.KEY }}
           port: 22
           timeout: 60s
-          command_timeout: 30m
+          command_timeout: 10m
           script: |
             cd mail_test_production1
             git pull origin main
-            docker compose up -d --build
+            docker compose pull
+            docker compose up -d --remove-orphans
