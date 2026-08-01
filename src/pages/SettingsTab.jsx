@@ -25,6 +25,9 @@ export default function SettingsTab() {
   // Gmail SMTP settings state
   const [gmailAddress, setGmailAddress] = useState('');
   const [gmailPassword, setGmailPassword] = useState('');
+  const [gmailError, setGmailError] = useState('');
+  const [gmailSuccess, setGmailSuccess] = useState('');
+  const [gmailLoading, setGmailLoading] = useState(false);
   
   // Custom SMTP settings state
   const [customHost, setCustomHost] = useState('mail.fastnexa.com');
@@ -32,13 +35,15 @@ export default function SettingsTab() {
   const [customUseSsl, setCustomUseSsl] = useState(true);
   const [customEmail, setCustomEmail] = useState('');
   const [customPassword, setCustomPassword] = useState('');
+  const [customError, setCustomError] = useState('');
+  const [customSuccess, setCustomSuccess] = useState('');
+  const [customLoading, setCustomLoading] = useState(false);
 
-  // General SMTP info from DB
+  // General SMTP info from DB & testing
   const [smtpData, setSmtpData] = useState(null);
-  const [smtpError, setSmtpError] = useState('');
-  const [smtpSuccess, setSmtpSuccess] = useState('');
-  const [smtpLoading, setSmtpLoading] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [testError, setTestError] = useState('');
+  const [testSuccess, setTestSuccess] = useState('');
 
   const fetchSMTPConfig = async () => {
     try {
@@ -53,12 +58,14 @@ export default function SettingsTab() {
         } else {
           setGmailPassword('');
         }
-        // Set defaults for custom form
-        setCustomHost('mail.fastnexa.com');
-        setCustomPort(465);
-        setCustomUseSsl(true);
-        setCustomEmail('');
-        setCustomPassword('');
+        // Set defaults for custom form if empty
+        if (!customEmail) {
+          setCustomHost('mail.fastnexa.com');
+          setCustomPort(465);
+          setCustomUseSsl(true);
+          setCustomEmail('');
+          setCustomPassword('');
+        }
       } else {
         setCustomHost(data.smtp_host || 'mail.fastnexa.com');
         setCustomPort(data.smtp_port || 465);
@@ -69,9 +76,11 @@ export default function SettingsTab() {
         } else {
           setCustomPassword('');
         }
-        // Set defaults for Gmail form
-        setGmailAddress('');
-        setGmailPassword('');
+        // Set defaults for Gmail form if empty
+        if (!gmailAddress) {
+          setGmailAddress('');
+          setGmailPassword('');
+        }
       }
     } catch (err) {
       console.error('Failed to load SMTP settings:', err);
@@ -121,16 +130,16 @@ export default function SettingsTab() {
 
   const handleSaveGmailSMTP = async (e) => {
     e.preventDefault();
-    setSmtpError('');
-    setSmtpSuccess('');
-    setSmtpLoading(true);
+    setGmailError('');
+    setGmailSuccess('');
+    setGmailLoading(true);
 
     const isDummyPass = gmailPassword === '••••••••••••';
     const passToSend = isDummyPass ? null : gmailPassword;
 
     if (!isDummyPass && (!gmailPassword || gmailPassword.trim() === '')) {
-      setSmtpError('Please enter your Gmail App Password.');
-      setSmtpLoading(false);
+      setGmailError('Please enter your Gmail App Password.');
+      setGmailLoading(false);
       return;
     }
 
@@ -144,27 +153,30 @@ export default function SettingsTab() {
         app_password: passToSend
       };
       await api.saveSMTP(payload);
-      setSmtpSuccess('Google/Gmail SMTP configuration saved successfully!');
+      setGmailSuccess('Google/Gmail SMTP configuration saved successfully!');
+      // Clear any custom form errors
+      setCustomError('');
+      setCustomSuccess('');
       fetchSMTPConfig();
     } catch (err) {
-      setSmtpError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save SMTP settings.');
+      setGmailError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save SMTP settings.');
     } finally {
-      setSmtpLoading(false);
+      setGmailLoading(false);
     }
   };
 
   const handleSaveCustomSMTP = async (e) => {
     e.preventDefault();
-    setSmtpError('');
-    setSmtpSuccess('');
-    setSmtpLoading(true);
+    setCustomError('');
+    setCustomSuccess('');
+    setCustomLoading(true);
 
     const isDummyPass = customPassword === '••••••••••••';
     const passToSend = isDummyPass ? null : customPassword;
 
     if (!isDummyPass && (!customPassword || customPassword.trim() === '')) {
-      setSmtpError('Please enter your Custom SMTP password.');
-      setSmtpLoading(false);
+      setCustomError('Please enter your Custom SMTP password.');
+      setCustomLoading(false);
       return;
     }
 
@@ -178,25 +190,28 @@ export default function SettingsTab() {
         app_password: passToSend
       };
       await api.saveSMTP(payload);
-      setSmtpSuccess('Hostinger/Custom SMTP configuration saved successfully!');
+      setCustomSuccess('Hostinger/Custom SMTP configuration saved successfully!');
+      // Clear any gmail form errors
+      setGmailError('');
+      setGmailSuccess('');
       fetchSMTPConfig();
     } catch (err) {
-      setSmtpError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save SMTP settings.');
+      setCustomError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save SMTP settings.');
     } finally {
-      setSmtpLoading(false);
+      setCustomLoading(false);
     }
   };
 
   const handleTestSMTP = async () => {
     setTestingConnection(true);
-    setSmtpError('');
-    setSmtpSuccess('');
+    setTestError('');
+    setTestSuccess('');
     try {
       const result = await api.testSMTP();
-      setSmtpSuccess(result.message);
+      setTestSuccess(result.message);
       fetchSMTPConfig();
     } catch (err) {
-      setSmtpError(err.response?.data?.error || err.message || 'SMTP Authentication Test Failed.');
+      setTestError(err.response?.data?.error || err.message || 'SMTP Authentication Test Failed.');
     } finally {
       setTestingConnection(false);
     }
@@ -204,21 +219,29 @@ export default function SettingsTab() {
 
   const handleDeleteSMTP = async () => {
     if (!window.confirm('Are you sure you want to delete your SMTP configuration? You will not be able to send emails.')) return;
-    setSmtpLoading(true);
-    setSmtpError('');
-    setSmtpSuccess('');
+    setGmailLoading(true);
+    setCustomLoading(true);
+    setGmailError('');
+    setCustomError('');
+    setGmailSuccess('');
+    setCustomSuccess('');
+    setTestError('');
+    setTestSuccess('');
     try {
       await api.deleteSMTP();
-      setSmtpSuccess('SMTP configuration deleted.');
+      setGmailSuccess('SMTP configuration deleted.');
+      setCustomSuccess('SMTP configuration deleted.');
       setGmailAddress('');
       setGmailPassword('');
       setCustomEmail('');
       setCustomPassword('');
       setSmtpData(null);
     } catch (err) {
-      setSmtpError(err.response?.data?.error || err.message || 'Failed to delete SMTP settings.');
+      setGmailError(err.response?.data?.error || err.message || 'Failed to delete SMTP settings.');
+      setCustomError(err.response?.data?.error || err.message || 'Failed to delete SMTP settings.');
     } finally {
-      setSmtpLoading(false);
+      setGmailLoading(false);
+      setCustomLoading(false);
     }
   };
 
@@ -440,26 +463,38 @@ export default function SettingsTab() {
                 </p>
               </label>
 
-              {smtpError && smtpData?.provider === 'gmail' && (
+              {gmailError && (
                 <div className="alert-error flex items-start gap-2 text-xs">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>{smtpError}</p>
+                  <p>{gmailError}</p>
                 </div>
               )}
-              {smtpSuccess && smtpData?.provider === 'gmail' && (
+              {gmailSuccess && (
                 <div className="alert-success flex items-start gap-2 text-xs">
                   <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>{smtpSuccess}</p>
+                  <p>{gmailSuccess}</p>
+                </div>
+              )}
+              {testError && smtpData?.provider === 'gmail' && (
+                <div className="alert-error flex items-start gap-2 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{testError}</p>
+                </div>
+              )}
+              {testSuccess && smtpData?.provider === 'gmail' && (
+                <div className="alert-success flex items-start gap-2 text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{testSuccess}</p>
                 </div>
               )}
 
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={smtpLoading || testingConnection}
+                  disabled={gmailLoading || testingConnection}
                   className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-lime to-cyan text-primary-foreground font-semibold text-sm cursor-pointer transition flex-1"
                 >
-                  {smtpLoading ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Save settings'}
+                  {gmailLoading ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Save settings'}
                 </button>
                 
                 {smtpData?.provider === 'gmail' && (
@@ -467,7 +502,7 @@ export default function SettingsTab() {
                     <button
                       type="button"
                       onClick={handleTestSMTP}
-                      disabled={testingConnection || smtpLoading || !smtpData?.has_password}
+                      disabled={testingConnection || gmailLoading || !smtpData?.has_password}
                       className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-sm flex items-center justify-center gap-2 cursor-pointer transition flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
                       title={!smtpData?.has_password ? "Please save credentials first to test connection" : "Test SMTP connection"}
                     >
@@ -479,7 +514,7 @@ export default function SettingsTab() {
                       <button
                         type="button"
                         onClick={handleDeleteSMTP}
-                        disabled={smtpLoading}
+                        disabled={gmailLoading}
                         className="p-2.5 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-border text-rose-500 hover:border-rose-500/25 transition cursor-pointer"
                         title="Delete Credentials"
                       >
@@ -587,26 +622,38 @@ export default function SettingsTab() {
                 </p>
               </label>
 
-              {smtpError && smtpData?.provider === 'custom' && (
+              {customError && (
                 <div className="alert-error flex items-start gap-2 text-xs">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>{smtpError}</p>
+                  <p>{customError}</p>
                 </div>
               )}
-              {smtpSuccess && smtpData?.provider === 'custom' && (
+              {customSuccess && (
                 <div className="alert-success flex items-start gap-2 text-xs">
                   <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p>{smtpSuccess}</p>
+                  <p>{customSuccess}</p>
+                </div>
+              )}
+              {testError && smtpData?.provider === 'custom' && (
+                <div className="alert-error flex items-start gap-2 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{testError}</p>
+                </div>
+              )}
+              {testSuccess && smtpData?.provider === 'custom' && (
+                <div className="alert-success flex items-start gap-2 text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{testSuccess}</p>
                 </div>
               )}
 
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={smtpLoading || testingConnection}
+                  disabled={customLoading || testingConnection}
                   className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-lime to-cyan text-primary-foreground font-semibold text-sm cursor-pointer transition flex-1"
                 >
-                  {smtpLoading ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Save settings'}
+                  {customLoading ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Save settings'}
                 </button>
                 
                 {smtpData?.provider === 'custom' && (
@@ -614,7 +661,7 @@ export default function SettingsTab() {
                     <button
                       type="button"
                       onClick={handleTestSMTP}
-                      disabled={testingConnection || smtpLoading || !smtpData?.has_password}
+                      disabled={testingConnection || customLoading || !smtpData?.has_password}
                       className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-sm flex items-center justify-center gap-2 cursor-pointer transition flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
                       title={!smtpData?.has_password ? "Please save credentials first to test connection" : "Test SMTP connection"}
                     >
@@ -626,7 +673,7 @@ export default function SettingsTab() {
                       <button
                         type="button"
                         onClick={handleDeleteSMTP}
-                        disabled={smtpLoading}
+                        disabled={customLoading}
                         className="p-2.5 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-border text-rose-500 hover:border-rose-500/25 transition cursor-pointer"
                         title="Delete Credentials"
                       >
