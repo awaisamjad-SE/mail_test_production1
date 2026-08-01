@@ -100,6 +100,7 @@ jobs:
           command_timeout: 10m
           script: |
             cd mail_test_production1
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             git pull origin main
             docker compose pull
             docker compose up -d --remove-orphans
