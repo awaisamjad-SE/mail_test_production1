@@ -95,14 +95,19 @@ class SMTPTestConnectionView(APIView):
 
             # Test connection to SMTP server dynamically
             try:
-                host = smtp.smtp_host or ('smtp.gmail.com' if smtp.provider == 'gmail' else 'mail.fastnexa.com')
-                port = int(smtp.smtp_port or (587 if smtp.provider == 'gmail' else 465))
-                use_ssl = smtp.use_ssl or (port == 465)
+                if smtp.provider == 'gmail':
+                    host = 'smtp.gmail.com'
+                    port = 587
+                    use_ssl = False
+                else:
+                    host = smtp.smtp_host or 'mail.fastnexa.com'
+                    port = int(smtp.smtp_port or 465)
+                    use_ssl = smtp.use_ssl if smtp.use_ssl is not None else (port == 465)
 
                 if use_ssl or port == 465:
-                    server = smtplib.SMTP_SSL(host, port, timeout=10)
+                    server = smtplib.SMTP_SSL(host, port, timeout=12)
                 else:
-                    server = smtplib.SMTP(host, port, timeout=10)
+                    server = smtplib.SMTP(host, port, timeout=12)
                     server.starttls()
 
                 server.login(smtp.gmail_address, password)
@@ -112,15 +117,21 @@ class SMTPTestConnectionView(APIView):
                 smtp.is_verified = True
                 smtp.save()
 
-                ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Successful ({host})")
-                return Response({"status": "Success", "message": f"SMTP connection ({host}:{port}) verified successfully."})
+                ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Successful ({host}:{port})")
+                return Response({"status": "Success", "message": f"SMTP connection to {host}:{port} verified successfully!"})
+            except smtplib.SMTPAuthenticationError as auth_err:
+                smtp.is_verified = False
+                smtp.save()
+                error_detail = auth_err.smtp_error.decode('utf-8', errors='ignore') if isinstance(auth_err.smtp_error, bytes) else str(auth_err.smtp_error)
+                msg = f"Authentication Failed ({host}:{port}): {error_detail}"
+                ActivityLog.objects.create(user=request.user, action=f"SMTP Auth Failed: {msg}")
+                return Response({"status": "Failed", "error": msg}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 smtp.is_verified = False
                 smtp.save()
-                
                 error_msg = str(e)
                 ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Failed: {error_msg}")
-                return Response({"status": "Failed", "error": error_msg}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"status": "Failed", "error": f"Connection Failed to {host}:{port} - {error_msg}"}, status=status.HTTP_400_BAD_REQUEST)
 
         except SMTPCredential.DoesNotExist:
             return Response({"status": "Failed", "error": "No SMTP credentials configured. Save them first."}, status=status.HTTP_400_BAD_REQUEST)

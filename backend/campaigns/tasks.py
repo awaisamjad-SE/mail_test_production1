@@ -115,9 +115,14 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
 
     # 5. Connect and Send
     try:
-        host = smtp.smtp_host or ('smtp.gmail.com' if smtp.provider == 'gmail' else 'mail.fastnexa.com')
-        port = int(smtp.smtp_port or (587 if smtp.provider == 'gmail' else 465))
-        use_ssl = smtp.use_ssl or (port == 465)
+        if smtp.provider == 'gmail':
+            host = 'smtp.gmail.com'
+            port = 587
+            use_ssl = False
+        else:
+            host = smtp.smtp_host or 'mail.fastnexa.com'
+            port = int(smtp.smtp_port or 465)
+            use_ssl = smtp.use_ssl if smtp.use_ssl is not None else (port == 465)
 
         if use_ssl or port == 465:
             server = smtplib.SMTP_SSL(host, port, timeout=15)
