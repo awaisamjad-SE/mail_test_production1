@@ -22,13 +22,18 @@ export default function SettingsTab() {
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
-  // SMTP settings state
-  const [provider, setProvider] = useState('gmail');
-  const [smtpHost, setSmtpHost] = useState('smtp.gmail.com');
-  const [smtpPort, setSmtpPort] = useState(587);
-  const [useSsl, setUseSsl] = useState(false);
-  const [smtpAddress, setSmtpAddress] = useState('');
-  const [smtpPassword, setSmtpPassword] = useState('');
+  // Gmail SMTP settings state
+  const [gmailAddress, setGmailAddress] = useState('');
+  const [gmailPassword, setGmailPassword] = useState('');
+  
+  // Custom SMTP settings state
+  const [customHost, setCustomHost] = useState('mail.fastnexa.com');
+  const [customPort, setCustomPort] = useState(465);
+  const [customUseSsl, setCustomUseSsl] = useState(true);
+  const [customEmail, setCustomEmail] = useState('');
+  const [customPassword, setCustomPassword] = useState('');
+
+  // General SMTP info from DB
   const [smtpData, setSmtpData] = useState(null);
   const [smtpError, setSmtpError] = useState('');
   const [smtpSuccess, setSmtpSuccess] = useState('');
@@ -40,26 +45,39 @@ export default function SettingsTab() {
       const data = await api.fetchSMTP();
       setSmtpData(data);
       const prov = data.provider || 'gmail';
-      setProvider(prov);
-      if (prov === 'custom') {
-        setSmtpHost(data.smtp_host || 'mail.fastnexa.com');
-        setSmtpPort(data.smtp_port || 465);
-        setUseSsl(data.use_ssl !== undefined ? data.use_ssl : true);
+      
+      if (prov === 'gmail') {
+        setGmailAddress(data.gmail_address || '');
+        if (data.has_password) {
+          setGmailPassword('••••••••••••');
+        } else {
+          setGmailPassword('');
+        }
+        // Set defaults for custom form
+        setCustomHost('mail.fastnexa.com');
+        setCustomPort(465);
+        setCustomUseSsl(true);
+        setCustomEmail('');
+        setCustomPassword('');
       } else {
-        setSmtpHost('smtp.gmail.com');
-        setSmtpPort(587);
-        setUseSsl(false);
-      }
-      setSmtpAddress(data.gmail_address || '');
-      if (data.has_password) {
-        setSmtpPassword('••••••••••••');
-      } else {
-        setSmtpPassword('');
+        setCustomHost(data.smtp_host || 'mail.fastnexa.com');
+        setCustomPort(data.smtp_port || 465);
+        setCustomUseSsl(data.use_ssl !== undefined ? data.use_ssl : true);
+        setCustomEmail(data.gmail_address || '');
+        if (data.has_password) {
+          setCustomPassword('••••••••••••');
+        } else {
+          setCustomPassword('');
+        }
+        // Set defaults for Gmail form
+        setGmailAddress('');
+        setGmailPassword('');
       }
     } catch (err) {
       console.error('Failed to load SMTP settings:', err);
     }
   };
+
   useEffect(() => {
     fetchSMTPConfig();
   }, []);
@@ -101,60 +119,66 @@ export default function SettingsTab() {
     }
   };
 
-  const handleProviderSwitch = (newProv) => {
-    setProvider(newProv);
-    setSmtpError('');
-    setSmtpSuccess('');
-    
-    if (newProv === 'custom') {
-      if (!smtpHost || smtpHost === 'smtp.gmail.com') {
-        setSmtpHost('mail.fastnexa.com');
-      }
-      setSmtpPort(465);
-      setUseSsl(true);
-    } else {
-      setSmtpHost('smtp.gmail.com');
-      setSmtpPort(587);
-      setUseSsl(false);
-    }
-
-    if (smtpData?.provider !== newProv) {
-      setSmtpPassword('');
-    } else if (smtpData?.has_password) {
-      setSmtpPassword('••••••••••••');
-    }
-  };
-
-  const handleSaveSMTP = async (e) => {
+  const handleSaveGmailSMTP = async (e) => {
     e.preventDefault();
     setSmtpError('');
     setSmtpSuccess('');
     setSmtpLoading(true);
 
-    const isDummyPass = smtpPassword === '••••••••••••';
-    const passToSend = isDummyPass ? null : smtpPassword;
+    const isDummyPass = gmailPassword === '••••••••••••';
+    const passToSend = isDummyPass ? null : gmailPassword;
 
-    if (!isDummyPass && (!smtpPassword || smtpPassword.trim() === '')) {
-      setSmtpError('Please enter your email account password before saving.');
+    if (!isDummyPass && (!gmailPassword || gmailPassword.trim() === '')) {
+      setSmtpError('Please enter your Gmail App Password.');
       setSmtpLoading(false);
       return;
     }
 
     try {
       const payload = {
-        provider,
-        smtp_host: provider === 'gmail' ? 'smtp.gmail.com' : smtpHost,
-        smtp_port: provider === 'gmail' ? 587 : parseInt(smtpPort, 10),
-        use_ssl: provider === 'gmail' ? false : useSsl,
-        gmail_address: smtpAddress,
+        provider: 'gmail',
+        smtp_host: 'smtp.gmail.com',
+        smtp_port: 587,
+        use_ssl: false,
+        gmail_address: gmailAddress,
         app_password: passToSend
       };
-      const updated = await api.saveSMTP(payload);
-      setSmtpSuccess(`${provider === 'gmail' ? 'Google/Gmail' : 'Hostinger/Custom'} SMTP configuration saved successfully!`);
-      setSmtpData(updated);
-      if (updated.has_password) {
-        setSmtpPassword('••••••••••••');
-      }
+      await api.saveSMTP(payload);
+      setSmtpSuccess('Google/Gmail SMTP configuration saved successfully!');
+      fetchSMTPConfig();
+    } catch (err) {
+      setSmtpError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save SMTP settings.');
+    } finally {
+      setSmtpLoading(false);
+    }
+  };
+
+  const handleSaveCustomSMTP = async (e) => {
+    e.preventDefault();
+    setSmtpError('');
+    setSmtpSuccess('');
+    setSmtpLoading(true);
+
+    const isDummyPass = customPassword === '••••••••••••';
+    const passToSend = isDummyPass ? null : customPassword;
+
+    if (!isDummyPass && (!customPassword || customPassword.trim() === '')) {
+      setSmtpError('Please enter your Custom SMTP password.');
+      setSmtpLoading(false);
+      return;
+    }
+
+    try {
+      const payload = {
+        provider: 'custom',
+        smtp_host: customHost,
+        smtp_port: parseInt(customPort, 10),
+        use_ssl: customUseSsl,
+        gmail_address: customEmail,
+        app_password: passToSend
+      };
+      await api.saveSMTP(payload);
+      setSmtpSuccess('Hostinger/Custom SMTP configuration saved successfully!');
       fetchSMTPConfig();
     } catch (err) {
       setSmtpError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save SMTP settings.');
@@ -186,8 +210,10 @@ export default function SettingsTab() {
     try {
       await api.deleteSMTP();
       setSmtpSuccess('SMTP configuration deleted.');
-      setSmtpAddress('');
-      setSmtpPassword('');
+      setGmailAddress('');
+      setGmailPassword('');
+      setCustomEmail('');
+      setCustomPassword('');
       setSmtpData(null);
     } catch (err) {
       setSmtpError(err.response?.data?.error || err.message || 'Failed to delete SMTP settings.');
@@ -353,196 +379,74 @@ export default function SettingsTab() {
           </div>
         </div>
 
-        {/* Gmail & Custom SMTP credentials */}
+        {/* Two Separate SMTP Config Cards */}
         <div className="lg:col-span-7 space-y-6">
-          <div className="rounded-3xl glass border border-border p-6 space-y-6">
+          
+          {/* 1. Google / Gmail SMTP Card */}
+          <div className="rounded-3xl glass border border-border p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-cyan" />
                 <div>
-                  <h3 className="font-display font-semibold text-base">SMTP Credentials</h3>
-                  <p className="text-xs text-muted-foreground">Used to dispatch outbound mail securely</p>
+                  <h3 className="font-display font-semibold text-base">Google / Gmail SMTP</h3>
+                  <p className="text-xs text-muted-foreground">Dispatch mail via Google smtp.gmail.com</p>
                 </div>
               </div>
-              {smtpData?.is_verified && smtpData?.provider === provider && (
+              {smtpData?.provider === 'gmail' && smtpData?.is_verified && (
                 <span className="bg-lime/10 text-lime border border-lime/20 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md animate-pulse">
                   Active Connection
                 </span>
               )}
             </div>
 
-            {/* Provider Switch Tabs */}
-            <div className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Select SMTP Provider</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleProviderSwitch('gmail')}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition ${
-                    provider === 'gmail'
-                      ? 'bg-cyan/20 border-cyan text-cyan'
-                      : 'bg-white/5 border-border text-muted-foreground hover:bg-white/10'
-                  }`}
-                >
-                  <span>Google / Gmail</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleProviderSwitch('custom')}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition ${
-                    provider === 'custom'
-                      ? 'bg-cyan/20 border-cyan text-cyan'
-                      : 'bg-white/5 border-border text-muted-foreground hover:bg-white/10'
-                  }`}
-                >
-                  <span>Hostinger / Custom SMTP</span>
-                </button>
+            <form onSubmit={handleSaveGmailSMTP} className="space-y-4">
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
+                <span>SMTP Server: <strong className="text-foreground font-semibold">smtp.gmail.com</strong></span>
+                <span>Port: <strong className="text-foreground font-semibold">587 (TLS)</strong></span>
               </div>
-            </div>
 
-            {/* Active Provider Indicator Alert */}
-            {smtpData?.provider && smtpData.provider !== provider && (
-              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs leading-normal">
-                <strong>Notice:</strong> Your currently active mail sender is configured with{' '}
-                <strong className="underline decoration-wavy">
-                  {smtpData.provider === 'gmail' ? 'Google / Gmail' : 'Hostinger / Custom SMTP'}
-                </strong>
-                . Fill in the details below and click <strong>Save settings</strong> to switch to this provider.
-              </div>
-            )}
+              <label className="block space-y-2">
+                <span className="text-xs font-medium">Gmail Address</span>
+                <input
+                  type="email"
+                  value={gmailAddress}
+                  onChange={(e) => setGmailAddress(e.target.value)}
+                  placeholder="username@gmail.com"
+                  className="input text-xs"
+                  required
+                />
+              </label>
 
-            <form onSubmit={handleSaveSMTP} className="space-y-4">
-              {/* Form fields based on selected provider */}
-              {provider === 'gmail' ? (
-                <div className="space-y-4 animate-fadeIn">
-                  <div className="p-3 rounded-xl bg-white/[0.02] border border-border flex items-center justify-between text-xs font-mono text-muted-foreground">
-                    <span>SMTP Server: <strong className="text-foreground font-semibold">smtp.gmail.com</strong></span>
-                    <span>Port: <strong className="text-foreground font-semibold">587 (TLS)</strong></span>
-                  </div>
-
-                  <label className="block space-y-2">
-                    <span className="text-xs font-medium">Gmail Address</span>
-                    <input
-                      type="email"
-                      value={smtpAddress}
-                      onChange={(e) => setSmtpAddress(e.target.value)}
-                      placeholder="username@gmail.com"
-                      className="input text-xs"
-                      required
-                    />
-                  </label>
-
-                  <label className="block space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium">Gmail App Password</span>
-                      <span className="text-muted-foreground font-mono text-[10px]">16 characters</span>
-                    </div>
-                    <input
-                      type="password"
-                      value={smtpPassword}
-                      onChange={(e) => setSmtpPassword(e.target.value)}
-                      onClick={() => {
-                        if (smtpPassword === '••••••••••••') {
-                          setSmtpPassword('');
-                        }
-                      }}
-                      placeholder="xxxx xxxx xxxx xxxx"
-                      className="input font-mono text-xs"
-                      required
-                    />
-                    <p className="text-[10px] text-muted-foreground leading-normal mt-1">
-                      App Password generation: Go to Google Account Settings → Security → 2-Step Verification → App Passwords.
-                    </p>
-                  </label>
+              <label className="block space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium">Gmail App Password</span>
+                  <span className="text-muted-foreground font-mono text-[10px]">16 characters</span>
                 </div>
-              ) : (
-                <div className="space-y-4 animate-fadeIn">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <label className="block space-y-1.5 sm:col-span-2">
-                      <span className="text-xs font-medium">SMTP Server Host</span>
-                      <input
-                        type="text"
-                        value={smtpHost}
-                        onChange={(e) => setSmtpHost(e.target.value)}
-                        placeholder="e.g. mail.fastnexa.com"
-                        className="input text-xs"
-                        required
-                      />
-                    </label>
-                    <label className="block space-y-1.5">
-                      <span className="text-xs font-medium">Port</span>
-                      <input
-                        type="number"
-                        value={smtpPort}
-                        onChange={(e) => {
-                          const p = parseInt(e.target.value, 10);
-                          setSmtpPort(e.target.value);
-                          if (p === 465) setUseSsl(true);
-                        }}
-                        placeholder="465 or 587"
-                        className="input text-xs font-mono"
-                        required
-                      />
-                    </label>
-                  </div>
+                <input
+                  type="password"
+                  value={gmailPassword}
+                  onChange={(e) => setGmailPassword(e.target.value)}
+                  onClick={() => {
+                    if (gmailPassword === '••••••••••••') {
+                      setGmailPassword('');
+                    }
+                  }}
+                  placeholder="xxxx xxxx xxxx xxxx"
+                  className="input font-mono text-xs"
+                  required
+                />
+                <p className="text-[10px] text-muted-foreground leading-normal mt-1">
+                  App Password generation: Go to Google Account Settings → Security → 2-Step Verification → App Passwords.
+                </p>
+              </label>
 
-                  <div className="flex items-center gap-2 pt-0.5">
-                    <input
-                      type="checkbox"
-                      id="use_ssl"
-                      checked={useSsl}
-                      onChange={(e) => setUseSsl(e.target.checked)}
-                      className="rounded border-border bg-white/5 text-cyan focus:ring-cyan cursor-pointer"
-                    />
-                    <label htmlFor="use_ssl" className="text-xs font-medium text-muted-foreground cursor-pointer">
-                      Use SSL Encryption (recommended for Port 465)
-                    </label>
-                  </div>
-
-                  <label className="block space-y-2">
-                    <span className="text-xs font-medium">Email / Username</span>
-                    <input
-                      type="email"
-                      value={smtpAddress}
-                      onChange={(e) => setSmtpAddress(e.target.value)}
-                      placeholder="awaisamjad@fastnexa.com"
-                      className="input text-xs"
-                      required
-                    />
-                  </label>
-
-                  <label className="block space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium">Mailbox Password</span>
-                      <span className="text-muted-foreground font-mono text-[10px]">Hostinger Password</span>
-                    </div>
-                    <input
-                      type="password"
-                      value={smtpPassword}
-                      onChange={(e) => setSmtpPassword(e.target.value)}
-                      onClick={() => {
-                        if (smtpPassword === '••••••••••••') {
-                          setSmtpPassword('');
-                        }
-                      }}
-                      placeholder="Your email password"
-                      className="input font-mono text-xs"
-                      required
-                    />
-                    <p className="text-[10px] text-muted-foreground leading-normal mt-1">
-                      Use the email account password set in your Hostinger / cPanel email control panel.
-                    </p>
-                  </label>
-                </div>
-              )}
-
-              {smtpError && (
+              {smtpError && smtpData?.provider === 'gmail' && (
                 <div className="alert-error flex items-start gap-2 text-xs">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <p>{smtpError}</p>
                 </div>
               )}
-              {smtpSuccess && (
+              {smtpSuccess && smtpData?.provider === 'gmail' && (
                 <div className="alert-success flex items-start gap-2 text-xs">
                   <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                   <p>{smtpSuccess}</p>
@@ -558,7 +462,7 @@ export default function SettingsTab() {
                   {smtpLoading ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Save settings'}
                 </button>
                 
-                {smtpData?.provider === provider && (
+                {smtpData?.provider === 'gmail' && (
                   <>
                     <button
                       type="button"
@@ -586,34 +490,181 @@ export default function SettingsTab() {
                 )}
               </div>
             </form>
+          </div>
 
-            {/* Stats section */}
-            {smtpData && (
-              <div className="border-t border-border pt-4 space-y-3 font-mono text-xs">
-                <h4 className="text-[10px] tracking-wider uppercase font-semibold text-muted-foreground">Daily Throttle & Telemetry Limits</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-2xl border border-border bg-white/[0.01] p-3">
-                    <p className="text-muted-foreground text-[10px]">DISPATCHED TODAY</p>
-                    <div className="flex justify-between items-baseline mt-1.5">
-                      <span className="text-base font-bold text-foreground">{smtpData.emails_sent_today}</span>
-                      <span className="text-muted-foreground text-[10px]">/ 500 max</span>
-                    </div>
-                  </div>
-                  
-                  <div className="rounded-2xl border border-border bg-white/[0.01] p-3">
-                    <p className="text-muted-foreground text-[10px]">TOTAL MONTHLY VOLUME</p>
-                    <p className="text-base font-bold text-foreground mt-1.5">{smtpData.emails_sent_this_month}</p>
+          {/* 2. Hostinger / Custom SMTP Card */}
+          <div className="rounded-3xl glass border border-border p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-cyan" />
+                <div>
+                  <h3 className="font-display font-semibold text-base">Hostinger / Custom SMTP</h3>
+                  <p className="text-xs text-muted-foreground">Dispatch mail via Hostinger / cPanel servers</p>
+                </div>
+              </div>
+              {smtpData?.provider === 'custom' && smtpData?.is_verified && (
+                <span className="bg-lime/10 text-lime border border-lime/20 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md animate-pulse">
+                  Active Connection
+                </span>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveCustomSMTP} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="block space-y-1.5 sm:col-span-2">
+                  <span className="text-xs font-medium">SMTP Server Host</span>
+                  <input
+                    type="text"
+                    value={customHost}
+                    onChange={(e) => setCustomHost(e.target.value)}
+                    placeholder="e.g. mail.fastnexa.com"
+                    className="input text-xs"
+                    required
+                  />
+                </label>
+                <label className="block space-y-1.5">
+                  <span className="text-xs font-medium">Port</span>
+                  <input
+                    type="number"
+                    value={customPort}
+                    onChange={(e) => {
+                      setCustomPort(e.target.value);
+                      const p = parseInt(e.target.value, 10);
+                      if (p === 465) setCustomUseSsl(true);
+                    }}
+                    placeholder="465 or 587"
+                    className="input text-xs font-mono"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2 pt-0.5">
+                <input
+                  type="checkbox"
+                  id="custom_use_ssl"
+                  checked={customUseSsl}
+                  onChange={(e) => setCustomUseSsl(e.target.checked)}
+                  className="rounded border-border bg-white/5 text-cyan focus:ring-cyan cursor-pointer"
+                />
+                <label htmlFor="custom_use_ssl" className="text-xs font-medium text-muted-foreground cursor-pointer">
+                  Use SSL Encryption (recommended for Port 465)
+                </label>
+              </div>
+
+              <label className="block space-y-2">
+                <span className="text-xs font-medium">Email / Username</span>
+                <input
+                  type="email"
+                  value={customEmail}
+                  onChange={(e) => setCustomEmail(e.target.value)}
+                  placeholder="awaisamjad@fastnexa.com"
+                  className="input text-xs"
+                  required
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-medium">Mailbox Password</span>
+                  <span className="text-muted-foreground font-mono text-[10px]">Hostinger Password</span>
+                </div>
+                <input
+                  type="password"
+                  value={customPassword}
+                  onChange={(e) => setCustomPassword(e.target.value)}
+                  onClick={() => {
+                    if (customPassword === '••••••••••••') {
+                      setCustomPassword('');
+                    }
+                  }}
+                  placeholder="Your email password"
+                  className="input font-mono text-xs"
+                  required
+                />
+                <p className="text-[10px] text-muted-foreground leading-normal mt-1">
+                  Use the email account password set in your Hostinger / cPanel email control panel.
+                </p>
+              </label>
+
+              {smtpError && smtpData?.provider === 'custom' && (
+                <div className="alert-error flex items-start gap-2 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{smtpError}</p>
+                </div>
+              )}
+              {smtpSuccess && smtpData?.provider === 'custom' && (
+                <div className="alert-success flex items-start gap-2 text-xs">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{smtpSuccess}</p>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={smtpLoading || testingConnection}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-lime to-cyan text-primary-foreground font-semibold text-sm cursor-pointer transition flex-1"
+                >
+                  {smtpLoading ? <Loader2 className="size-4 animate-spin mx-auto" /> : 'Save settings'}
+                </button>
+                
+                {smtpData?.provider === 'custom' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleTestSMTP}
+                      disabled={testingConnection || smtpLoading || !smtpData?.has_password}
+                      className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-sm flex items-center justify-center gap-2 cursor-pointer transition flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={!smtpData?.has_password ? "Please save credentials first to test connection" : "Test SMTP connection"}
+                    >
+                      {testingConnection ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                      <span>Test connection</span>
+                    </button>
+                    
+                    {smtpData?.has_password && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteSMTP}
+                        disabled={smtpLoading}
+                        className="p-2.5 rounded-xl bg-white/5 hover:bg-rose-500/10 border border-border text-rose-500 hover:border-rose-500/25 transition cursor-pointer"
+                        title="Delete Credentials"
+                      >
+                        <Trash2 className="size-4.5" />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </form>
+          </div>
+
+          {/* Stats section */}
+          {smtpData && (
+            <div className="border-t border-border pt-4 space-y-3 font-mono text-xs">
+              <h4 className="text-[10px] tracking-wider uppercase font-semibold text-muted-foreground">Daily Throttle & Telemetry Limits</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-2xl border border-border bg-white/[0.01] p-3">
+                  <p className="text-muted-foreground text-[10px]">DISPATCHED TODAY</p>
+                  <div className="flex justify-between items-baseline mt-1.5">
+                    <span className="text-base font-bold text-foreground">{smtpData.emails_sent_today}</span>
+                    <span className="text-muted-foreground text-[10px]">/ 500 max</span>
                   </div>
                 </div>
                 
-                {smtpData.last_email_sent_at && (
-                  <p className="text-[10px] text-muted-foreground/60">
-                    Last sent event: {new Date(smtpData.last_email_sent_at).toLocaleString()}
-                  </p>
-                )}
+                <div className="rounded-2xl border border-border bg-white/[0.01] p-3">
+                  <p className="text-muted-foreground text-[10px]">TOTAL MONTHLY VOLUME</p>
+                  <p className="text-base font-bold text-foreground mt-1.5">{smtpData.emails_sent_this_month}</p>
+                </div>
               </div>
-            )}
-          </div>
+              
+              {smtpData.last_email_sent_at && (
+                <p className="text-[10px] text-muted-foreground/60">
+                  Last sent event: {new Date(smtpData.last_email_sent_at).toLocaleString()}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
