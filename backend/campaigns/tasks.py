@@ -16,7 +16,7 @@ from mailflow_backend.encryption import decrypt_password
 
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True, max_retries=3, rate_limit='4/m')
 def send_email_task(self, email_log_id, attachment_name=None, attachment_data=None):
     try:
         log = EmailLog.objects.get(id=email_log_id)
