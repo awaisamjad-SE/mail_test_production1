@@ -18,12 +18,12 @@ from .serializers import (
     CustomTokenObtainPairSerializer
 )
 
+from email.utils import make_msgid, formatdate
+from campaigns.deliverability import clean_html_to_plain_text
+
 User = get_user_model()
 
 def send_html_system_email(subject, title, message_html, recipient_email):
-    # Plain text fallback
-    text_content = f"{title}\n\n" + re.sub('<[^<]+?>', '', message_html.replace("<br/>", "\n").replace("<br>", "\n").replace("<p>", "").replace("</p>", "\n"))
-    
     # HTML body
     html_content = f"""
     <!DOCTYPE html>
@@ -148,11 +148,24 @@ def send_html_system_email(subject, title, message_html, recipient_email):
     </html>
     """
     
+    # Plain text fallback via Deliverability module
+    text_content = f"{title}\n\n" + clean_html_to_plain_text(message_html)
+    
+    from_email = settings.DEFAULT_FROM_EMAIL or 'noreply@mailflow.engineer'
+    domain = from_email.split('@')[-1] if '@' in from_email else 'mailflow.engineer'
+    
+    headers = {
+        'Date': formatdate(localtime=True),
+        'Message-ID': make_msgid(domain=domain),
+        'Auto-Submitted': 'auto-generated'
+    }
+
     email = EmailMultiAlternatives(
         subject=subject,
         body=text_content,
-        from_email=settings.DEFAULT_FROM_EMAIL or 'noreply@mailflow.engineer',
-        to=[recipient_email]
+        from_email=from_email,
+        to=[recipient_email],
+        headers=headers
     )
     email.attach_alternative(html_content, "text/html")
     email.send(fail_silently=False)

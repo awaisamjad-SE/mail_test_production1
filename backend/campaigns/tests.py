@@ -141,3 +141,44 @@ class CampaignsTests(APITestCase):
         response = self.client.delete(reverse('template-detail', kwargs={'pk': template_id}))
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(EmailTemplate.objects.count(), 0)
+
+
+class DeliverabilityTests(TestCase):
+
+    def test_clean_html_to_plain_text(self):
+        from .deliverability import clean_html_to_plain_text
+        
+        html_input = """
+        <html>
+          <body>
+            <h1>Welcome to MailFlow!</h1>
+            <p>Hi Awais,<br>Thank you for signing up.</p>
+            <p>Click <a href="https://mailflow.engineer/login">here to login</a>.</p>
+          </body>
+        </html>
+        """
+        plain_text = clean_html_to_plain_text(html_input)
+        self.assertIn("Welcome to MailFlow!", plain_text)
+        self.assertIn("Hi Awais,\nThank you for signing up.", plain_text)
+        self.assertIn("here to login (https://mailflow.engineer/login)", plain_text)
+        self.assertNotIn("<h1>", plain_text)
+        self.assertNotIn("<p>", plain_text)
+
+    def test_deliverability_analyzer_validation(self):
+        from email.message import EmailMessage
+        from email.utils import make_msgid, formatdate
+        from .deliverability import DeliverabilityAnalyzer
+        
+        msg = EmailMessage()
+        msg['Subject'] = 'Test Subject'
+        msg['From'] = 'Awais Amjad <awaisamjad@fastnexa.com>'
+        msg['To'] = 'recipient@example.com'
+        msg['Date'] = formatdate(localtime=True)
+        msg['Message-ID'] = make_msgid(domain='fastnexa.com')
+        msg.set_content('Plain text body')
+        msg.add_alternative('<p>HTML body</p>', subtype='html')
+        
+        analysis = DeliverabilityAnalyzer.validate_rfc_compliance(msg, is_campaign=True)
+        self.assertTrue(analysis['is_valid'])
+        self.assertEqual(len(analysis['errors']), 0)
+

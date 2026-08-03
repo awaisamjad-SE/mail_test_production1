@@ -1,16 +1,20 @@
 import smtplib
 import base64
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
+import logging
+from email.message import EmailMessage
+from email.utils import make_msgid, formatdate
+from email.headerregistry import Address
+from email import policy
 from django.utils import timezone
 from celery import shared_task
 from django.db import transaction
 
 from .models import EmailLog, Campaign, ActivityLog
+from .deliverability import clean_html_to_plain_text, DeliverabilityAnalyzer, DebugEmailLogger
 from smtp_settings.models import SMTPCredential
 from mailflow_backend.encryption import decrypt_password
+
+logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3)
 def send_email_task(self, email_log_id, attachment_name=None, attachment_data=None):
@@ -44,11 +48,11 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
         smtp.last_reset_date = today
         smtp.save()
 
-    # Enforce Gmail SMTP sending limits (e.g. 500 emails/day)
+    # Enforce Gmail/SMTP sending limits (e.g. 500 emails/day)
     LIMIT = 500
     if smtp.daily_sent_count >= LIMIT:
         log.status = 'FAILED'
-        log.error_message = f"Daily Gmail sending limit of {LIMIT} exceeded."
+        log.error_message = f"Daily sending limit of {LIMIT} exceeded."
         log.save()
         
         if log.campaign:
@@ -59,11 +63,12 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
                 check_campaign_completion(campaign.id)
         return "Daily sending limit exceeded."
 
-    # 3. Decrypt App Password
+    # 3. Decrypt App Password & Alias Provider-Agnostic Sender
+    authenticated_sender = smtp.gmail_address  # Generic SMTP account email address
     password = decrypt_password(smtp.encrypted_app_password)
-    if not smtp.gmail_address or not password:
+    if not authenticated_sender or not password:
         log.status = 'FAILED'
-        log.error_message = "Gmail address or App Password is missing/invalid."
+        log.error_message = "SMTP username or Password is missing/invalid."
         log.save()
         
         if log.campaign:
@@ -74,44 +79,55 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
                 check_campaign_completion(campaign.id)
         return "Invalid SMTP config."
 
-    # 4. Formulate email message
+    # 4. Formulate email message using Canonical EmailMessage Engine
     is_html = log.body.strip().startswith('<!DOCTYPE html>') or '<html' in log.body.lower() or '<div' in log.body.lower()
     from_name = user.full_name or 'MailFlow'
+    sender_domain = authenticated_sender.split('@')[-1] if '@' in authenticated_sender else 'mailflow.engineer'
+
+    msg = EmailMessage(policy=policy.SMTP)
+    msg['Subject'] = log.subject
+    
+    # Format From header cleanly (handles UTF-8 display names with RFC 2047 encoding)
+    if '@' in authenticated_sender:
+        username_part, domain_part = authenticated_sender.split('@', 1)
+        msg['From'] = Address(display_name=from_name, username=username_part, domain=domain_part)
+    else:
+        msg['From'] = f"{from_name} <{authenticated_sender}>"
+
+    msg['To'] = log.recipient
+    msg['Date'] = formatdate(localtime=True)
+    msg['Message-ID'] = make_msgid(domain=sender_domain)
+
+    # Add List-Unsubscribe & Precedence headers for bulk campaign deliverability (RFC 2369 / RFC 8058)
+    if log.campaign:
+        msg['Precedence'] = 'bulk'
+        msg['List-Unsubscribe'] = f"<mailto:unsubscribe@{sender_domain}?subject=unsubscribe>"
+        msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
+
+    # Set content tree cleanly
+    plain_text_content = clean_html_to_plain_text(log.body) if is_html else log.body
+
+    if is_html:
+        msg.set_content(plain_text_content)
+        msg.add_alternative(log.body, subtype='html')
+    else:
+        msg.set_content(plain_text_content)
 
     if attachment_data:
-        msg = MIMEMultipart('mixed')
-        msg['Subject'] = log.subject
-        msg['From'] = f"{from_name} <{smtp.gmail_address}>"
-        msg['To'] = log.recipient
-
-        body_part = MIMEMultipart('alternative')
-        body_part.attach(MIMEText(log.body, 'html' if is_html else 'plain', 'utf-8'))
-        msg.attach(body_part)
-
         try:
             raw_bytes = base64.b64decode(attachment_data)
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(raw_bytes)
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', f'attachment; filename="{attachment_name}"')
-            msg.attach(part)
+            msg.add_attachment(raw_bytes, maintype='application', subtype='octet-stream', filename=attachment_name or 'attachment.bin')
         except Exception as attach_err:
             log.error_message = f"Attachment error: {str(attach_err)}"
             log.save()
-    else:
-        if is_html:
-            msg = MIMEMultipart('alternative')
-            # Add plain text fallback and HTML
-            plain_fallback = log.body.replace('<br>', '\n').replace('<p>', '\n').replace('</p>', '')
-            msg.attach(MIMEText(plain_fallback, 'plain', 'utf-8'))
-            msg.attach(MIMEText(log.body, 'html', 'utf-8'))
-        else:
-            msg = MIMEMultipart()
-            msg.attach(MIMEText(log.body, 'plain', 'utf-8'))
 
-        msg['Subject'] = log.subject
-        msg['From'] = f"{from_name} <{smtp.gmail_address}>"
-        msg['To'] = log.recipient
+    # Pre-Flight RFC & Deliverability Audit
+    analysis = DeliverabilityAnalyzer.validate_rfc_compliance(msg, is_campaign=bool(log.campaign))
+    if not analysis['is_valid']:
+        logger.warning(f"RFC Compliance warnings for log {email_log_id}: {analysis['errors']}")
+
+    # Save debug trace .eml if MAILFLOW_EMAIL_DEBUG is active
+    DebugEmailLogger.dump_eml(msg, str(log.id))
 
     # 5. Connect and Send
     try:
@@ -130,8 +146,9 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
             server = smtplib.SMTP(host, port, timeout=15)
             server.starttls()
 
-        server.login(smtp.gmail_address, password)
-        server.sendmail(smtp.gmail_address, log.recipient, msg.as_string())
+        server.login(authenticated_sender, password)
+        # Dispatch via send_message with explicit envelope sender (MAIL FROM)
+        server.send_message(msg, from_addr=authenticated_sender, to_addrs=[log.recipient])
         server.quit()
         
         # Mark as sent
