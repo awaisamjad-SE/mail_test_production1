@@ -142,7 +142,7 @@ export default function BulkSend({ onNavigateToTracker }) {
   };
 
   const previewEmail = csvData?.validRows?.[previewIndex]
-    ? buildEmailPayload(csvData.validRows[previewIndex], subject, body, replyTo)
+    ? buildEmailPayload(csvData.validRows[previewIndex], subject, body, '')
     : { to: 'recipient@example.com', subject: subject || 'Demo Subject', body: body || 'Demo email body content' };
 
   const canSend = csvData && csvData.validCount > 0 && subject && body && !sending;
