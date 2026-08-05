@@ -16,7 +16,7 @@ from mailflow_backend.encryption import decrypt_password
 
 logger = logging.getLogger(__name__)
 
-@shared_task(bind=True, max_retries=3, rate_limit='4/m')
+@shared_task(bind=True, max_retries=3, rate_limit='12/h')
 def send_email_task(self, email_log_id, attachment_name=None, attachment_data=None):
     try:
         log = EmailLog.objects.get(id=email_log_id)
@@ -98,9 +98,8 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
     msg['Date'] = formatdate(localtime=True)
     msg['Message-ID'] = make_msgid(domain=sender_domain)
 
-    # Add List-Unsubscribe & Precedence headers for bulk campaign deliverability (RFC 2369 / RFC 8058)
+    # Add List-Unsubscribe headers for campaign deliverability compliance (RFC 2369 / RFC 8058)
     if log.campaign:
-        msg['Precedence'] = 'bulk'
         msg['List-Unsubscribe'] = f"<mailto:unsubscribe@{sender_domain}?subject=unsubscribe>"
         msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
 
