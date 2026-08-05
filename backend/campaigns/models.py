@@ -36,6 +36,7 @@ class EmailLog(models.Model):
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='email_logs', null=True, blank=True)
     recipient = models.EmailField()
     recipient_name = models.CharField(max_length=255, blank=True)
+    cc = models.CharField(max_length=500, blank=True, default='')       # Comma-separated CC addresses
     subject = models.CharField(max_length=255)
     body = models.TextField(default="")
     status = models.CharField(max_length=20, default='PENDING', choices=STATUS_CHOICES)

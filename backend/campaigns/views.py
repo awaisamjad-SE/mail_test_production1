@@ -71,6 +71,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
         campaign_type = data.get('campaign_type', 'QUICK_SEND')
         subject = data.get('subject', '')
         body = data.get('body', '')
+        cc = data.get('cc', '').strip()        # Optional: comma-separated CC emails e.g. "ceo@x.com,mgr@x.com"
         recipients = data.get('recipients', []) # Expected list: [{"email": "...", "name": "...", "variables": {...}}]
 
         # Robust recipients parsing for both application/json and multipart/form-data
@@ -150,6 +151,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 campaign=campaign,
                 recipient=email_addr,
                 recipient_name=rcpt_name,
+                cc=cc,
                 subject=rcpt_subject,
                 body=rcpt_body,
                 status='PENDING'

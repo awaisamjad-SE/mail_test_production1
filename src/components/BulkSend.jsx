@@ -14,7 +14,7 @@ export default function BulkSend({ onNavigateToTracker }) {
   const [file, setFile] = useState(null);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
-  const [replyTo, setReplyTo] = useState('');
+  const [cc, setCc] = useState('');
   const [sending, setSending] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [showTable, setShowTable] = useState(false);
@@ -99,6 +99,7 @@ export default function BulkSend({ onNavigateToTracker }) {
       payload.append('campaign_type', 'BULK_SEND');
       payload.append('subject', subject);
       payload.append('body', body);
+      if (cc) payload.append('cc', cc);
       payload.append('recipients', JSON.stringify(recipients));
       payload.append('attachment', file);
     } else {
@@ -107,6 +108,7 @@ export default function BulkSend({ onNavigateToTracker }) {
         campaign_type: 'BULK_SEND',
         subject: subject,
         body: body,
+        ...(cc && { cc }),
         recipients
       };
     }
@@ -367,7 +369,7 @@ export default function BulkSend({ onNavigateToTracker }) {
                 </select>
               </label>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="block space-y-2">
                 <label className="block space-y-2">
                   <span className="text-sm font-medium flex items-center gap-1.5">
                     Subject <span className="text-rose">*</span>
@@ -380,18 +382,20 @@ export default function BulkSend({ onNavigateToTracker }) {
                     required
                   />
                 </label>
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium flex items-center gap-1.5">
-                    Reply-To <span className="text-[11px] text-muted-foreground font-normal">(optional)</span>
-                  </span>
-                  <input
-                    value={replyTo}
-                    onChange={(e) => setReplyTo(e.target.value)}
-                    placeholder="reply@example.com"
-                    className="input"
-                  />
-                </label>
               </div>
+
+              {/* CC Field */}
+              <label className="block space-y-2">
+                <span className="text-sm font-medium flex items-center gap-1.5">
+                  CC <span className="text-[11px] text-muted-foreground font-normal">(optional — comma-separated, e.g. ceo@company.com, manager@company.com)</span>
+                </span>
+                <input
+                  value={cc}
+                  onChange={(e) => setCc(e.target.value)}
+                  placeholder="ceo@fastnexa.com, bilal@fastnexa.com"
+                  className="input"
+                />
+              </label>
 
               <label className="block space-y-2">
                 <span className="text-sm font-medium flex items-center justify-between">

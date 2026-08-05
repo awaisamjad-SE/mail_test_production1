@@ -98,6 +98,11 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
     msg['Date'] = formatdate(localtime=True)
     msg['Message-ID'] = make_msgid(domain=sender_domain)
 
+    # Inject CC header if CC addresses are set on this log
+    cc_addresses = [addr.strip() for addr in log.cc.split(',') if addr.strip()] if log.cc else []
+    if cc_addresses:
+        msg['Cc'] = ', '.join(cc_addresses)
+
     # Add List-Unsubscribe headers for campaign deliverability compliance (RFC 2369 / RFC 8058)
     if log.campaign:
         msg['List-Unsubscribe'] = f"<mailto:unsubscribe@{sender_domain}?subject=unsubscribe>"
