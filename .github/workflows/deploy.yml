@@ -104,3 +104,4 @@ jobs:
             git pull origin main
             docker compose pull
             docker compose up -d --remove-orphans
+            docker compose exec -T backend python manage.py migrate --no-input
