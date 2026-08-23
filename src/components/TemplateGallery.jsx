@@ -105,24 +105,14 @@ export default function TemplateGallery({ onNavigateToTracker }) {
       }
     }));
 
-    let payload;
-    if (file) {
-      payload = new FormData();
-      payload.append('name', `Template Campaign: ${selected.name}`);
-      payload.append('campaign_type', 'BULK_SEND');
-      payload.append('subject', subject);
-      payload.append('body', body);
-      payload.append('recipients', JSON.stringify(recipients));
-      payload.append('attachment', file);
-    } else {
-      payload = {
-        name: `Template Campaign: ${selected.name}`,
-        campaign_type: 'BULK_SEND',
-        subject: subject,
-        body: body,
-        recipients
-      };
-    }
+    const payload = {
+      name: `Template Campaign: ${selected.name}`,
+      campaign_type: 'BULK_SEND',
+      subject: subject,
+      body: body,
+      recipients
+    };
+
 
     try {
       await sendEmails(payload);

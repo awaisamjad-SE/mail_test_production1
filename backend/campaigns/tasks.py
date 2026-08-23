@@ -9,21 +9,36 @@ from django.utils import timezone
 from celery import shared_task
 from django.db import transaction
 
-from .models import EmailLog, Campaign, ActivityLog
+from .models import EmailLog, Campaign, ActivityLog, GlobalSuppressionList
 from .deliverability import clean_html_to_plain_text, DeliverabilityAnalyzer, DebugEmailLogger
+from .imap_engine import IMAPSyncEngine, normalize_message_id
 from smtp_settings.models import SMTPCredential
 from mailflow_backend.encryption import decrypt_password
 
 logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3, rate_limit='12/h')
-def send_email_task(self, email_log_id, attachment_name=None, attachment_data=None):
+def send_email_task(self, email_log_id):
     try:
         log = EmailLog.objects.get(id=email_log_id)
+
     except EmailLog.DoesNotExist:
         return f"Log {email_log_id} not found."
 
     user = log.user
+
+    # 0. Check Global Suppression List
+    if GlobalSuppressionList.objects.filter(user=user, email__iexact=log.recipient).exists():
+        log.status = 'FAILED'
+        log.error_message = f"Recipient {log.recipient} is in the global suppression / unsubscribe list."
+        log.save()
+        if log.campaign:
+            with transaction.atomic():
+                campaign = Campaign.objects.select_for_update().get(id=log.campaign.id)
+                campaign.failed_count += 1
+                campaign.save()
+                check_campaign_completion(campaign.id)
+        return f"Recipient {log.recipient} suppressed."
     
     # 1. Fetch SMTP settings
     try:
@@ -79,10 +94,17 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
                 check_campaign_completion(campaign.id)
         return "Invalid SMTP config."
 
-    # 4. Formulate email message using Canonical EmailMessage Engine
-    is_html = log.body.strip().startswith('<!DOCTYPE html>') or '<html' in log.body.lower() or '<div' in log.body.lower()
+    # 4. Pre-Generate & Persist Canonical Message-ID BEFORE SMTP transmission
     from_name = user.full_name or 'MailFlow'
     sender_domain = authenticated_sender.split('@')[-1] if '@' in authenticated_sender else 'mailflow.engineer'
+
+    if not log.message_id:
+        raw_msg_id = make_msgid(id=str(log.id), domain=sender_domain)
+        log.message_id = normalize_message_id(raw_msg_id)
+        log.save(update_fields=['message_id'])
+
+    # 5. Formulate email message using Canonical EmailMessage Engine
+    is_html = log.body.strip().startswith('<!DOCTYPE html>') or '<html' in log.body.lower() or '<div' in log.body.lower()
 
     msg = EmailMessage(policy=policy.SMTP)
     msg['Subject'] = log.subject
@@ -96,7 +118,8 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
 
     msg['To'] = log.recipient
     msg['Date'] = formatdate(localtime=True)
-    msg['Message-ID'] = make_msgid(domain=sender_domain)
+    msg['Message-ID'] = f"<{log.message_id}>"
+    msg['X-FastNexa-EmailLog-ID'] = str(log.id)
 
     # Inject CC header if CC addresses are set on this log
     cc_addresses = [addr.strip() for addr in log.cc.split(',') if addr.strip()] if log.cc else []
@@ -117,15 +140,8 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
     else:
         msg.set_content(plain_text_content)
 
-    if attachment_data:
-        try:
-            raw_bytes = base64.b64decode(attachment_data)
-            msg.add_attachment(raw_bytes, maintype='application', subtype='octet-stream', filename=attachment_name or 'attachment.bin')
-        except Exception as attach_err:
-            log.error_message = f"Attachment error: {str(attach_err)}"
-            log.save()
-
     # Pre-Flight RFC & Deliverability Audit
+
     analysis = DeliverabilityAnalyzer.validate_rfc_compliance(msg, is_campaign=bool(log.campaign))
     if not analysis['is_valid']:
         logger.warning(f"RFC Compliance warnings for log {email_log_id}: {analysis['errors']}")
@@ -133,7 +149,7 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
     # Save debug trace .eml if MAILFLOW_EMAIL_DEBUG is active
     DebugEmailLogger.dump_eml(msg, str(log.id))
 
-    # 5. Connect and Send
+    # 6. Connect and Send
     try:
         if smtp.provider == 'gmail':
             host = 'smtp.gmail.com'
@@ -144,16 +160,31 @@ def send_email_task(self, email_log_id, attachment_name=None, attachment_data=No
             port = int(smtp.smtp_port or 465)
             use_ssl = smtp.use_ssl if smtp.use_ssl is not None else (port == 465)
 
-        if use_ssl or port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=15)
-        else:
-            server = smtplib.SMTP(host, port, timeout=15)
-            server.starttls()
+        hosts_to_try = [host]
+        if host != 'smtp.hostinger.com':
+            hosts_to_try.append('smtp.hostinger.com')
 
-        server.login(authenticated_sender, password)
+        server = None
+        last_err = None
+        for h in hosts_to_try:
+            try:
+                if use_ssl or port == 465:
+                    server = smtplib.SMTP_SSL(h, port, timeout=10)
+                else:
+                    server = smtplib.SMTP(h, port, timeout=10)
+                    server.starttls()
+                server.login(authenticated_sender, password)
+                break
+            except Exception as err:
+                last_err = err
+
+        if not server:
+            raise last_err
+
         # Dispatch via send_message with explicit envelope sender (MAIL FROM)
         server.send_message(msg, from_addr=authenticated_sender, to_addrs=[log.recipient])
         server.quit()
+
         
         # Mark as sent
         log.status = 'SENT'
@@ -221,3 +252,28 @@ def check_campaign_completion(campaign_id):
             user=campaign.user, 
             action=f"Campaign Completed: {campaign.name} ({campaign.successful_count} sent, {campaign.failed_count} failed)"
         )
+
+@shared_task
+def sync_user_inbox_task(credential_id):
+    """Celery task to sync a single user IMAP inbox."""
+    try:
+        cred = SMTPCredential.objects.get(id=credential_id, is_monitoring_enabled=True)
+        engine = IMAPSyncEngine(cred)
+        res = engine.sync_inbox()
+        return f"Inbox sync result for {cred.gmail_address}: {res}"
+    except SMTPCredential.DoesNotExist:
+        return f"Credential {credential_id} not found or monitoring disabled."
+    except Exception as e:
+        logger.error(f"Error syncing inbox for credential {credential_id}: {e}")
+        return f"Sync failed: {e}"
+
+@shared_task
+def sync_all_inboxes_periodic():
+    """Periodic Celery Beat task to dispatch inbox sync tasks for all active credentials."""
+    active_credentials = SMTPCredential.objects.filter(is_monitoring_enabled=True)
+    count = 0
+    for cred in active_credentials:
+        sync_user_inbox_task.delay(str(cred.id))
+        count += 1
+    return f"Dispatched sync tasks for {count} credentials."
+

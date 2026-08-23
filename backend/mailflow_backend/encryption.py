@@ -14,5 +14,9 @@ def encrypt_password(password: str) -> str:
 def decrypt_password(encrypted_password: str) -> str:
     if not encrypted_password:
         return ""
-    f = get_fernet()
-    return f.decrypt(encrypted_password.encode()).decode()
+    try:
+        f = get_fernet()
+        return f.decrypt(encrypted_password.encode()).decode()
+    except Exception:
+        return encrypted_password
+

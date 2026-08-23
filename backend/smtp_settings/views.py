@@ -58,18 +58,26 @@ class SMTPCredentialView(APIView):
             })
 
     def post(self, request):
+        data = request.data.copy()
+        if not data.get('imap_host'):
+            data['imap_host'] = data.get('smtp_host') or 'mail.fastnexa.com'
+            data['imap_port'] = 993
+            data['imap_use_ssl'] = True
+
+
         try:
             smtp = SMTPCredential.objects.get(user=request.user)
-            serializer = SMTPCredentialSerializer(smtp, data=request.data, partial=True, context={'request': request})
+            serializer = SMTPCredentialSerializer(smtp, data=data, partial=True, context={'request': request})
         except SMTPCredential.DoesNotExist:
             smtp = None
-            serializer = SMTPCredentialSerializer(data=request.data, context={'request': request})
+            serializer = SMTPCredentialSerializer(data=data, context={'request': request})
         
         if serializer.is_valid():
             serializer.save()
             ActivityLog.objects.create(user=request.user, action="SMTP Credentials Updated")
             return Response(serializer.data, status=status.HTTP_200_OK if smtp else status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
     def delete(self, request):
         try:
@@ -100,17 +108,33 @@ class SMTPTestConnectionView(APIView):
                     port = 587
                     use_ssl = False
                 else:
-                    host = smtp.smtp_host or 'mail.fastnexa.com'
+                    host = (smtp.smtp_host or 'mail.fastnexa.com').strip()
                     port = int(smtp.smtp_port or 465)
                     use_ssl = smtp.use_ssl if smtp.use_ssl is not None else (port == 465)
 
-                if use_ssl or port == 465:
-                    server = smtplib.SMTP_SSL(host, port, timeout=12)
-                else:
-                    server = smtplib.SMTP(host, port, timeout=12)
-                    server.starttls()
+                hosts_to_try = [host]
+                if host != 'smtp.hostinger.com':
+                    hosts_to_try.append('smtp.hostinger.com')
 
-                server.login(smtp.gmail_address, password)
+                server = None
+                last_err = None
+                connected_host = host
+                for h in hosts_to_try:
+                    try:
+                        if use_ssl or port == 465:
+                            server = smtplib.SMTP_SSL(h, port, timeout=8)
+                        else:
+                            server = smtplib.SMTP(h, port, timeout=8)
+                            server.starttls()
+                        server.login(smtp.gmail_address, password)
+                        connected_host = h
+                        break
+                    except Exception as err:
+                        last_err = err
+
+                if not server:
+                    raise last_err
+
                 server.quit()
 
                 # Mark as verified
@@ -132,6 +156,7 @@ class SMTPTestConnectionView(APIView):
                 error_msg = str(e)
                 ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Failed: {error_msg}")
                 return Response({"status": "Failed", "error": f"Connection Failed to {host}:{port} - {error_msg}"}, status=status.HTTP_400_BAD_REQUEST)
+
 
         except SMTPCredential.DoesNotExist:
             return Response({"status": "Failed", "error": "No SMTP credentials configured. Save them first."}, status=status.HTTP_400_BAD_REQUEST)

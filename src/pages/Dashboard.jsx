@@ -5,27 +5,23 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Activity, Send, Users, FileSpreadsheet, LineChart as LineChartIcon,
   ScrollText, LayoutGrid, Settings, Mail, ShieldCheck, LogOut, 
-  Sun, Moon, Menu, X, AlertCircle, ChevronLeft, ChevronRight
+  Sun, Moon, Menu, X, AlertCircle, ChevronLeft, ChevronRight, Inbox
 } from 'lucide-react';
 import * as api from '../utils/api';
 
 import OverviewTab from './OverviewTab';
+import MasterInboxTab from './MasterInboxTab';
 import QuickSend from '../components/QuickSend';
-import BulkSend from '../components/BulkSend';
-import PersonalizedCSV from '../components/PersonalizedCSV';
-import CampaignsTab from './CampaignsTab';
-import HistoryTab from './HistoryTab';
-import TemplateGallery from '../components/TemplateGallery';
+import CampaignsHub from './CampaignsHub';
+import TrackerAndLogsTab from './TrackerAndLogsTab';
 import SettingsTab from './SettingsTab';
 
 const NAV = [
-  { key: 'overview', label: 'Overview', icon: Activity, hint: 'Live ops' },
+  { key: 'overview', label: 'Overview', icon: Activity, hint: 'Ops' },
+  { key: 'inbox', label: 'Master Inbox', icon: Inbox, hint: 'Unibox' },
   { key: 'quick', label: 'Quick Send', icon: Send, hint: '1 ↦ 1' },
-  { key: 'bulk', label: 'Bulk Send', icon: Users, hint: 'Fan‑out' },
-  { key: 'personalized', label: 'Personalized CSV', icon: FileSpreadsheet, hint: 'Merge' },
-  { key: 'campaigns', label: 'Campaign Tracker', icon: LineChartIcon, hint: 'Live' },
-  { key: 'history', label: 'History Logs', icon: ScrollText, hint: 'Audit' },
-  { key: 'templates', label: 'Template Gallery', icon: LayoutGrid, hint: '15' },
+  { key: 'campaigns', label: 'Campaigns Hub', icon: Users, hint: 'Launch' },
+  { key: 'tracker', label: 'Tracker & Logs', icon: LineChartIcon, hint: 'Audit' },
   { key: 'settings', label: 'Settings & SMTP', icon: Settings, hint: 'Domain' },
 ];
 
@@ -58,24 +54,22 @@ export default function Dashboard() {
     switch (activeTab) {
       case 'overview':
         return <OverviewTab />;
+      case 'inbox':
+        return <MasterInboxTab />;
       case 'quick':
-        return <QuickSend onNavigateToTracker={() => setActiveTab('campaigns')} />;
-      case 'bulk':
-        return <BulkSend onNavigateToTracker={() => setActiveTab('campaigns')} />;
-      case 'personalized':
-        return <PersonalizedCSV onNavigateToTracker={() => setActiveTab('campaigns')} />;
+        return <QuickSend onNavigateToTracker={() => setActiveTab('tracker')} />;
       case 'campaigns':
-        return <CampaignsTab />;
-      case 'history':
-        return <HistoryTab />;
-      case 'templates':
-        return <TemplateGallery onNavigateToQuick={() => setActiveTab('quick')} />;
+        return <CampaignsHub onNavigateToTracker={() => setActiveTab('tracker')} />;
+      case 'tracker':
+        return <TrackerAndLogsTab />;
       case 'settings':
         return <SettingsTab />;
       default:
         return <OverviewTab />;
     }
   };
+
+
 
   return (
     <div className="flex min-h-screen text-foreground bg-background">

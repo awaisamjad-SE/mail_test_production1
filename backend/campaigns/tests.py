@@ -68,32 +68,19 @@ class CampaignsTests(APITestCase):
         self.assertEqual(mock_send_email.call_count, 2)
 
     @patch('campaigns.views.send_email_task.delay')
-    def test_create_campaign_with_file_attachment(self, mock_send_email):
-        import base64
-        from django.core.files.uploadedfile import SimpleUploadedFile
-        
-        # Create a mock file
-        test_file = SimpleUploadedFile("resume.pdf", b"pdf content", content_type="application/pdf")
-        
+    def test_direct_send_email(self, mock_send_email):
         payload = {
-            'name': 'Test Attachment Campaign',
-            'campaign_type': 'QUICK_SEND',
-            'subject': 'Application - {{Name}}',
-            'body': 'Hi, please see attached my resume.',
-            'recipients': '[{"email": "job@example.com", "name": "HR"}]',
-            'attachment': test_file
+            'to': 'direct@example.com',
+            'cc': 'manager@example.com',
+            'subject': 'Direct Briefing',
+            'body': 'Hi, here is the direct update.',
         }
-        
-        response = self.client.post(self.campaigns_url, payload, format='multipart')
+        response = self.client.post('/api/send-direct/', payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        
-        # Verify Celery task is called with correct parameters (log.id, filename, base64_data)
         self.assertEqual(mock_send_email.call_count, 1)
-        args, kwargs = mock_send_email.call_args
-        self.assertIsInstance(args[0], str)  # Verify log_id is serialized to string
-        self.assertEqual(args[1], 'resume.pdf')
-        # Base64 string for b"pdf content" is "cGRmIGNvbnRlbnQ="
-        self.assertEqual(args[2], 'cGRmIGNvbnRlbnQ=')
+        args, _ = mock_send_email.call_args
+        self.assertIsInstance(args[0], str)
+
 
     @patch('campaigns.views.send_email_task.delay')
     def test_create_campaign_with_multipart_list_of_strings_recipients(self, mock_send_email):
@@ -181,4 +168,121 @@ class DeliverabilityTests(TestCase):
         analysis = DeliverabilityAnalyzer.validate_rfc_compliance(msg, is_campaign=True)
         self.assertTrue(analysis['is_valid'])
         self.assertEqual(len(analysis['errors']), 0)
+
+
+class IMAPEngineTests(TestCase):
+
+    def setUp(self):
+        from smtp_settings.models import SMTPCredential
+        self.user = User.objects.create_user(
+            email='ali@fastnexa.com',
+            full_name='Ali FastNexa',
+            password='Password123'
+        )
+        self.cred = SMTPCredential.objects.create(
+            user=self.user,
+            provider='custom',
+            smtp_host='smtp.hostinger.com',
+            smtp_port=465,
+            use_ssl=True,
+            gmail_address='ali@fastnexa.com',
+            encrypted_app_password='encrypted_pass',
+            imap_host='imap.hostinger.com',
+            imap_port=993,
+            imap_use_ssl=True
+        )
+
+        self.campaign = Campaign.objects.create(
+            user=self.user,
+            name='Outreach Campaign 1',
+            campaign_type='QUICK_SEND',
+            subject='Demo Request',
+            body='Hi Lead, checking in!',
+            total_recipients=1
+        )
+
+        self.log = EmailLog.objects.create(
+            user=self.user,
+            campaign=self.campaign,
+            recipient='client@example.com',
+            subject='Demo Request',
+            body='Hi Lead, checking in!',
+            status='SENT',
+            message_id='msg-uuid-12345@mail.fastnexa.com'
+        )
+
+    def test_multi_tier_thread_matching_tier1(self):
+        from .imap_engine import IMAPSyncEngine
+        engine = IMAPSyncEngine(self.cred)
+        matched_log = engine._find_matching_email_log(
+            in_reply_to='msg-uuid-12345@mail.fastnexa.com',
+            references=[],
+            custom_header=None,
+            sender_email='client@example.com',
+            user=self.user
+        )
+        self.assertEqual(matched_log, self.log)
+
+    def test_multi_tier_thread_matching_tier2(self):
+        from .imap_engine import IMAPSyncEngine
+        engine = IMAPSyncEngine(self.cred)
+        matched_log = engine._find_matching_email_log(
+            in_reply_to=None,
+            references=['msg-uuid-12345@mail.fastnexa.com'],
+            custom_header=None,
+            sender_email='client@example.com',
+            user=self.user
+        )
+        self.assertEqual(matched_log, self.log)
+
+    def test_classification_and_sentiment_analysis(self):
+        from .imap_engine import IMAPSyncEngine
+        engine = IMAPSyncEngine(self.cred)
+
+        # Interested Sentiment
+        sentiment = engine._analyze_sentiment("Sounds great! Let's schedule a call tomorrow.", "Re: Demo Request")
+        self.assertEqual(sentiment, 'INTERESTED')
+
+        # Unsubscribe Sentiment
+        sentiment_unsub = engine._analyze_sentiment("Please unsubscribe me and remove me from your list.", "Re: Demo Request")
+        self.assertEqual(sentiment_unsub, 'UNSUBSCRIBE')
+
+        # Bounce Classification
+        from email.message import EmailMessage
+        msg_bounce = EmailMessage()
+        msg_bounce['From'] = 'Mailer-Daemon <mailer-daemon@hostinger.com>'
+        msg_bounce['Subject'] = 'Delivery Status Notification (Failure)'
+        cls_bounce = engine._classify_message(msg_bounce, msg_bounce['Subject'], "550 5.1.1 User unknown", "mailer-daemon@hostinger.com")
+        self.assertEqual(cls_bounce, 'BOUNCE')
+
+    def test_idempotent_inbound_email_processing(self):
+        from .imap_engine import IMAPSyncEngine
+        from .models import InboundEmail
+        engine = IMAPSyncEngine(self.cred)
+
+        # Mock single raw email payload
+        from email.message import EmailMessage
+        raw_msg = EmailMessage()
+        raw_msg['From'] = 'client@example.com'
+        raw_msg['To'] = 'ali@fastnexa.com'
+        raw_msg['Subject'] = 'Re: Demo Request'
+        raw_msg['In-Reply-To'] = '<msg-uuid-12345@mail.fastnexa.com>'
+        raw_msg.set_content("Yes, I am interested! Let's talk.")
+
+        # Process twice with same UID & UIDVALIDITY
+        engine._process_single_inbound_message(uid=101, uid_validity=9999, raw_email_bytes=raw_msg.as_bytes())
+        engine._process_single_inbound_message(uid=101, uid_validity=9999, raw_email_bytes=raw_msg.as_bytes())
+
+        # Assert only 1 InboundEmail record created
+        self.assertEqual(InboundEmail.objects.count(), 1)
+        inbound = InboundEmail.objects.get()
+        self.assertEqual(inbound.classification, 'HUMAN_REPLY')
+        self.assertEqual(inbound.sentiment, 'INTERESTED')
+
+        # Assert EmailLog reply_status updated to REPLIED and campaign replied_count is 1 (not 2)
+        self.log.refresh_from_db()
+        self.assertEqual(self.log.reply_status, 'REPLIED')
+        self.campaign.refresh_from_db()
+        self.assertEqual(self.campaign.replied_count, 1)
+
 

@@ -127,11 +127,12 @@ export default function OverviewTab() {
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Sent" value={stats?.emails_sent ?? 0} delta="Dispatched" icon={Send} accent="lime" />
-        <StatCard label="Failed" value={stats?.emails_failed ?? 0} delta="Errors/Rejects" icon={AlertTriangle} accent="rose" />
-        <StatCard label="Delivery rate" value={`${stats?.success_rate ?? 100}%`} delta="Overall avg" icon={CheckCircle2} accent="cyan" />
-        <StatCard label="Campaigns" value={stats?.campaigns ?? 0} delta="Dispatched pools" icon={LineChartIcon} accent="amber" />
+        <StatCard label="Sent Total" value={stats?.emails_sent ?? 0} delta="Dispatched emails" icon={Send} accent="lime" />
+        <StatCard label="Replies" value={stats?.emails_replied ?? 0} delta={`Reply rate: ${stats?.reply_rate ?? 0}%`} icon={Inbox} accent="cyan" />
+        <StatCard label="Bounces" value={stats?.emails_bounced ?? 0} delta="Hard / Soft bounces" icon={AlertTriangle} accent="rose" />
+        <StatCard label="Delivery Rate" value={`${stats?.success_rate ?? 100}%`} delta="SMTP success" icon={CheckCircle2} accent="amber" />
       </div>
+
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

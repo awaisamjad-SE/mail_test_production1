@@ -9,7 +9,8 @@ import { buildEmailPayload } from '../utils/templateEngine';
 import { emailTemplates, buildCorporateHTML } from '../data/templates';
 import imgBulk from '../assets/snippet-bulk.jpg';
 
-export default function BulkSend({ onNavigateToTracker }) {
+export default function BulkSend({ onNavigateToTracker, initialCampaignName = '' }) {
+  const [campaignName, setCampaignName] = useState(initialCampaignName);
   const [csvData, setCsvData] = useState(null);
   const [file, setFile] = useState(null);
   const [subject, setSubject] = useState('');
@@ -19,6 +20,7 @@ export default function BulkSend({ onNavigateToTracker }) {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [showTable, setShowTable] = useState(false);
   const [toast, setToast] = useState(null);
+
 
   // Editing Row States
   const [editingRowIndex, setEditingRowIndex] = useState(null);
@@ -92,26 +94,15 @@ export default function BulkSend({ onNavigateToTracker }) {
       }
     }));
 
-    let payload;
-    if (file) {
-      payload = new FormData();
-      payload.append('name', `Bulk Campaign (${csvData.validCount} contacts)`);
-      payload.append('campaign_type', 'BULK_SEND');
-      payload.append('subject', subject);
-      payload.append('body', body);
-      if (cc) payload.append('cc', cc);
-      payload.append('recipients', JSON.stringify(recipients));
-      payload.append('attachment', file);
-    } else {
-      payload = {
-        name: `Bulk Campaign (${csvData.validCount} contacts)`,
-        campaign_type: 'BULK_SEND',
-        subject: subject,
-        body: body,
-        ...(cc && { cc }),
-        recipients
-      };
-    }
+    const payload = {
+      name: campaignName.trim() || `Bulk Campaign (${csvData.validCount} contacts)`,
+      campaign_type: 'BULK_SEND',
+      subject: subject,
+      body: body,
+      ...(cc && { cc }),
+      recipients
+    };
+
 
     try {
       await sendEmails(payload);

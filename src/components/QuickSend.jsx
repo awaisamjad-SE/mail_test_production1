@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Send, Zap, Loader2, RotateCcw } from 'lucide-react';
-import { sendEmails } from '../utils/api';
+import { sendDirectEmail } from '../utils/api';
 import StatusToast from './StatusToast';
 import BodyEditor from './BodyEditor';
 import EmailPreview from './EmailPreview';
 import imgQuick from '../assets/snippet-quick.jpg';
 
 export default function QuickSend({ onNavigateToTracker }) {
-  const [form, setForm] = useState({ to: '', subject: '', body: '', replyTo: '' });
+  const [form, setForm] = useState({ to: '', cc: '', subject: '', body: '', replyTo: '' });
   const [file, setFile] = useState(null);
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState(null);
@@ -15,46 +15,28 @@ export default function QuickSend({ onNavigateToTracker }) {
   const handleChange = (e) => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   const handleBodyChange = (bodyHtml) => setForm(prev => ({ ...prev, body: bodyHtml }));
 
-  const isValid = form.to && form.subject && form.body && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.to);
+  const recipientsList = form.to.split(',').map(s => s.trim()).filter(Boolean);
+  const isValid = recipientsList.length > 0 && recipientsList.every(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) && form.subject && form.body;
 
   const handleSend = async () => {
     if (!isValid) return;
     setSending(true);
     try {
-      const recipients = [
-        {
-          email: form.to,
-          name: form.to.split('@')[0],
-          variables: {}
-        }
-      ];
+      const payload = {
+        to: form.to,
+        cc: form.cc,
+        subject: form.subject,
+        body: form.body
+      };
 
-      let payload;
-      if (file) {
-        payload = new FormData();
-        payload.append('name', `Quick Send to ${form.to}`);
-        payload.append('campaign_type', 'QUICK_SEND');
-        payload.append('subject', form.subject);
-        payload.append('body', form.body);
-        payload.append('recipients', JSON.stringify(recipients));
-        payload.append('attachment', file);
-      } else {
-        payload = {
-          name: `Quick Send to ${form.to}`,
-          campaign_type: 'QUICK_SEND',
-          subject: form.subject,
-          body: form.body,
-          recipients
-        };
-      }
-      
-      await sendEmails(payload);
+      const res = await sendDirectEmail(payload);
+      const count = recipientsList.length;
       setToast({ 
         type: 'success', 
-        message: 'Email campaign enqueued!', 
-        details: `Processing send-job to ${form.to}` 
+        message: count > 1 ? `${count} Direct emails dispatched!` : 'Direct email dispatched!', 
+        details: `Dispatched to: ${form.to}` 
       });
-      setForm({ to: '', subject: '', body: '', replyTo: '' });
+      setForm({ to: '', cc: '', subject: '', body: '', replyTo: '' });
       setFile(null);
       
       if (onNavigateToTracker) {
@@ -74,7 +56,7 @@ export default function QuickSend({ onNavigateToTracker }) {
   };
 
   const handleClear = () => {
-    setForm({ to: '', subject: '', body: '', replyTo: '' });
+    setForm({ to: '', cc: '', subject: '', body: '', replyTo: '' });
     setFile(null);
   };
 
@@ -88,7 +70,7 @@ export default function QuickSend({ onNavigateToTracker }) {
             Quick <span className="gradient-text">send</span>
           </h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
-            Draft a one‑off email and dispatch instantly. Live preview, merge tags and HTML layouts supported.
+            Draft direct 1-on-1 or multi-recipient emails without creating a marketing campaign.
           </p>
         </div>
       </div>
@@ -101,9 +83,9 @@ export default function QuickSend({ onNavigateToTracker }) {
         <div className="relative h-full p-6 lg:p-8 flex items-center">
           <div className="flex-1">
             <div className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.2em] text-cyan px-2.5 py-1 rounded-full bg-cyan/10 border border-cyan/20">
-              <span className="size-1.5 rounded-full bg-cyan animate-pulse" /> One‑to‑one
+              <span className="size-1.5 rounded-full bg-cyan animate-pulse" /> Direct Send
             </div>
-            <h2 className="mt-3 font-display text-xl lg:text-2xl font-semibold max-w-md">Compose, preview and dispatch in under thirty seconds.</h2>
+            <h2 className="mt-3 font-display text-xl lg:text-2xl font-semibold max-w-md">Compose and dispatch direct emails to single or multiple recipients.</h2>
           </div>
           <div className="hidden md:grid grid-cols-3 gap-6 pr-2">
             <div className="text-right">
@@ -129,28 +111,29 @@ export default function QuickSend({ onNavigateToTracker }) {
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-2">
               <span className="text-sm font-medium flex items-center gap-1.5">
-                Recipient Email <span className="text-rose">*</span>
+                Recipient Email(s) <span className="text-rose">*</span> <span className="text-[10px] text-muted-foreground font-normal">(comma-separated)</span>
               </span>
               <input
                 name="to"
-                type="email"
+                type="text"
                 value={form.to}
                 onChange={handleChange}
-                placeholder="recipient@example.com"
+                placeholder="user1@example.com, user2@example.com"
                 className="input"
                 required
               />
             </label>
             <label className="block space-y-2">
+
               <span className="text-sm font-medium flex items-center gap-1.5">
-                Reply-To <span className="text-[11px] text-muted-foreground font-normal">(optional)</span>
+                CC Email(s) <span className="text-[11px] text-muted-foreground font-normal">(optional, comma-separated)</span>
               </span>
               <input
-                name="replyTo"
-                type="email"
-                value={form.replyTo}
+                name="cc"
+                type="text"
+                value={form.cc}
                 onChange={handleChange}
-                placeholder="reply@example.com"
+                placeholder="cc1@example.com, cc2@example.com"
                 className="input"
               />
             </label>
@@ -171,32 +154,6 @@ export default function QuickSend({ onNavigateToTracker }) {
             />
           </label>
 
-          <label className="block space-y-2">
-            <span className="text-sm font-medium flex items-center justify-between">
-              <span>File Attachment <span className="text-[11px] text-muted-foreground font-normal">(optional, e.g. PDF resume)</span></span>
-              {file && (
-                <button
-                  type="button"
-                  onClick={() => setFile(null)}
-                  className="text-[10px] text-rose-500 font-bold uppercase tracking-wider hover:underline cursor-pointer"
-                >
-                  Remove File
-                </button>
-              )}
-            </span>
-            <div className="flex items-center gap-3">
-              <input
-                type="file"
-                onChange={(e) => setFile(e.target.files[0] || null)}
-                className="input text-xs file:hidden cursor-pointer"
-              />
-            </div>
-            {file && (
-              <p className="text-[11px] text-lime font-mono">
-                Selected file: {file.name} ({Math.round(file.size / 1024)} KB)
-              </p>
-            )}
-          </label>
 
           <div className="space-y-2">
             <label className="block text-sm font-medium">Message body <span className="text-rose">*</span></label>

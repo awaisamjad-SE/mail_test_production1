@@ -1,11 +1,11 @@
 from rest_framework import serializers
-from .models import Campaign, EmailLog, EmailTemplate, ContactList, Contact, ActivityLog
+from .models import Campaign, EmailLog, EmailTemplate, ContactList, Contact, ActivityLog, InboundEmail, BounceDetail, GlobalSuppressionList
 
 class CampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campaign
         fields = '__all__'
-        read_only_fields = ('id', 'user', 'successful_count', 'failed_count', 'status', 'created_at')
+        read_only_fields = ('id', 'user', 'successful_count', 'failed_count', 'replied_count', 'bounced_count', 'auto_reply_count', 'unsubscribed_count', 'status', 'created_at')
 
 class EmailLogSerializer(serializers.ModelSerializer):
     campaign_name = serializers.CharField(source='campaign.name', read_only=True, default='Quick Send')
@@ -13,7 +13,27 @@ class EmailLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmailLog
         fields = '__all__'
-        read_only_fields = ('id', 'user', 'sent_at', 'status', 'error_message', 'retry_count')
+        read_only_fields = ('id', 'user', 'sent_at', 'status', 'error_message', 'retry_count', 'message_id', 'reply_status', 'last_inbound_at')
+
+class BounceDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BounceDetail
+        fields = '__all__'
+
+class InboundEmailSerializer(serializers.ModelSerializer):
+    campaign_name = serializers.CharField(source='campaign.name', read_only=True, default='')
+    bounce_detail = BounceDetailSerializer(read_only=True)
+
+    class Meta:
+        model = InboundEmail
+        fields = '__all__'
+        read_only_fields = ('id', 'user', 'received_at', 'processed_at')
+
+class GlobalSuppressionListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GlobalSuppressionList
+        fields = '__all__'
+        read_only_fields = ('id', 'user', 'added_at')
 
 class EmailTemplateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -40,3 +60,4 @@ class ActivityLogSerializer(serializers.ModelSerializer):
         model = ActivityLog
         fields = '__all__'
         read_only_fields = ('id', 'created_at')
+

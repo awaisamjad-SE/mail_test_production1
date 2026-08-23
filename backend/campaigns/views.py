@@ -6,12 +6,78 @@ from datetime import timedelta
 from django.db.models import Count, Q
 from django.db.models.functions import TruncDay, TruncMonth
 
-from .models import Campaign, EmailLog, EmailTemplate, ContactList, Contact, ActivityLog
+from .models import Campaign, EmailLog, EmailTemplate, ContactList, Contact, ActivityLog, InboundEmail, GlobalSuppressionList
 from .serializers import (
     CampaignSerializer, EmailLogSerializer, EmailTemplateSerializer,
-    ContactListSerializer, ContactSerializer, ActivityLogSerializer
+    ContactListSerializer, ContactSerializer, ActivityLogSerializer,
+    InboundEmailSerializer, GlobalSuppressionListSerializer
 )
-from .tasks import send_email_task
+from .tasks import send_email_task, sync_user_inbox_task
+from smtp_settings.models import SMTPCredential
+from .imap_engine import IMAPSyncEngine
+
+
+class InboundEmailViewSet(viewsets.ModelViewSet):
+    serializer_class = InboundEmailSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = InboundEmail.objects.filter(user=user).select_related('campaign', 'email_log', 'bounce_detail').order_by('-received_at')
+        
+        campaign_id = self.request.query_params.get('campaign')
+        classification = self.request.query_params.get('classification')
+        sentiment = self.request.query_params.get('sentiment')
+        search = self.request.query_params.get('search')
+
+        if campaign_id:
+            qs = qs.filter(campaign_id=campaign_id)
+        if classification:
+            qs = qs.filter(classification=classification.upper())
+        if sentiment:
+            qs = qs.filter(sentiment=sentiment.upper())
+        if search:
+            qs = qs.filter(
+                Q(sender_email__icontains=search) |
+                Q(subject__icontains=search) |
+                Q(body_text__icontains=search)
+            )
+
+        return qs
+
+class GlobalSuppressionViewSet(viewsets.ModelViewSet):
+    serializer_class = GlobalSuppressionListSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return GlobalSuppressionList.objects.filter(user=self.request.user).order_by('-added_at')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class ManualInboxSyncView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        user = request.user
+        try:
+            cred = SMTPCredential.objects.get(user=user)
+            engine = IMAPSyncEngine(cred)
+            res = engine.sync_inbox()
+            if res.get('status') == 'NOTICE':
+                return Response({
+                    "status": "NOTICE",
+                    "error": f"IMAP sync notice: {res.get('error')}",
+                    "details": res
+                }, status=status.HTTP_200_OK)
+            return Response({"status": "SUCCESS", "details": res}, status=status.HTTP_200_OK)
+        except SMTPCredential.DoesNotExist:
+            return Response({"error": "SMTP/IMAP settings not configured for this user."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"IMAP sync notice: {str(e)}"}, status=status.HTTP_200_OK)
+
+
 class EmailTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = EmailTemplateSerializer
     permission_classes = (permissions.IsAuthenticated,)
@@ -50,12 +116,58 @@ class ContactViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Contact.objects.filter(contact_list__user=self.request.user).order_by('-created_at')
 
+class DirectSendView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        user = request.user
+        data = request.data
+
+        raw_to = data.get('to') or data.get('recipient') or ''
+        cc = data.get('cc', '').strip()
+        subject = data.get('subject', '')
+        body = data.get('body', '')
+
+        if not raw_to or not subject or not body:
+            return Response({"error": "Recipient Email(s), Subject, and Body are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Parse comma-separated recipient emails
+        recipients = [addr.strip() for addr in raw_to.split(',') if addr.strip()]
+        if not recipients:
+            return Response({"error": "At least one valid recipient email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_logs = []
+        for to_email in recipients:
+            log = EmailLog.objects.create(
+                user=user,
+                campaign=None,
+                recipient=to_email,
+                recipient_name=to_email.split('@')[0],
+                cc=cc,
+                subject=subject,
+                body=body,
+                status='PENDING'
+            )
+            created_logs.append(log)
+            ActivityLog.objects.create(user=user, action=f"Direct email enqueued to {to_email}")
+            send_email_task.delay(str(log.id))
+
+        if len(created_logs) == 1:
+            return Response(EmailLogSerializer(created_logs[0]).data, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                "message": f"Successfully enqueued {len(created_logs)} direct emails.",
+                "count": len(created_logs),
+                "emails": EmailLogSerializer(created_logs, many=True).data
+            }, status=status.HTTP_201_CREATED)
+
+
 class CampaignViewSet(viewsets.ModelViewSet):
     serializer_class = CampaignSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return Campaign.objects.filter(user=self.request.user).order_by('-created_at')
+        return Campaign.objects.filter(user=self.request.user).exclude(campaign_type='QUICK_SEND').order_by('-created_at')
 
     def perform_create(self, serializer):
         # We handle creation via custom POST logic below to support queuing
@@ -63,12 +175,12 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         import json
-        import base64
+
         user = request.user
         data = request.data
         
         name = data.get('name', f"Campaign {timezone.now().strftime('%Y-%m-%d %H:%M')}")
-        campaign_type = data.get('campaign_type', 'QUICK_SEND')
+        campaign_type = data.get('campaign_type', 'BULK_SEND')
         subject = data.get('subject', '')
         body = data.get('body', '')
         cc = data.get('cc', '').strip()        # Optional: comma-separated CC emails e.g. "ceo@x.com,mgr@x.com"
@@ -104,14 +216,6 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
         if not recipients or len(recipients) == 0:
             return Response({"error": "At least one recipient is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Handle in-memory Base64 attachment encoding
-        file_obj = request.FILES.get('attachment')
-        attachment_name = None
-        attachment_data = None
-        if file_obj:
-            attachment_name = file_obj.name
-            attachment_data = base64.b64encode(file_obj.read()).decode('utf-8')
 
         # Create Campaign
         campaign = Campaign.objects.create(
@@ -157,12 +261,248 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 status='PENDING'
             )
 
-            # Trigger Celery background task with attachment parameters (cast log.id to string for JSON serialization)
-            send_email_task.delay(str(log.id), attachment_name, attachment_data)
+            # Trigger Celery background task
+            send_email_task.delay(str(log.id))
 
         return Response(CampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
 
+
 class CampaignStatusView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request, pk):
+        try:
+            campaign = Campaign.objects.get(id=pk, user=request.user)
+            
+            # Dynamic stats
+            pending = EmailLog.objects.filter(campaign=campaign, status='PENDING').count()
+            sent = EmailLog.objects.filter(campaign=campaign, status='SENT').count()
+            failed = EmailLog.objects.filter(campaign=campaign, status='FAILED').count()
+            
+            progress = (sent + failed) / campaign.total_recipients if campaign.total_recipients > 0 else 0
+            
+            return Response({
+                "id": campaign.id,
+                "name": campaign.name,
+                "status": campaign.status,
+                "total_recipients": campaign.total_recipients,
+                "successful_count": sent,
+                "failed_count": failed,
+                "pending_count": pending,
+                "replied_count": campaign.replied_count,
+                "bounced_count": campaign.bounced_count,
+                "auto_reply_count": campaign.auto_reply_count,
+                "unsubscribed_count": campaign.unsubscribed_count,
+                "progress_percent": round(progress * 100, 1),
+                "created_at": campaign.created_at
+            })
+        except Campaign.DoesNotExist:
+            return Response({"error": "Campaign not found."}, status=status.HTTP_404_NOT_FOUND)
+
+class DashboardStatsView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        user = request.user
+        
+        total_sent = EmailLog.objects.filter(user=user, status='SENT').count()
+        total_failed = EmailLog.objects.filter(user=user, status='FAILED').count()
+        total_replied = InboundEmail.objects.filter(user=user, classification='HUMAN_REPLY').count()
+        total_bounced = InboundEmail.objects.filter(user=user, classification='BOUNCE').count()
+        total_campaigns = Campaign.objects.filter(user=user).count()
+        total_templates = EmailTemplate.objects.filter(user=user).count()
+
+        success_rate = 0
+        total_deliveries = total_sent + total_failed
+        if total_deliveries > 0:
+            success_rate = round((total_sent / total_deliveries) * 100, 1)
+
+        reply_rate = 0
+        if total_sent > 0:
+            reply_rate = round((total_replied / total_sent) * 100, 1)
+
+        return Response({
+            "emails_sent": total_sent,
+            "emails_failed": total_failed,
+            "emails_replied": total_replied,
+            "emails_bounced": total_bounced,
+            "campaigns": total_campaigns,
+            "templates": total_templates,
+            "success_rate": success_rate,
+            "reply_rate": reply_rate
+        })
+
+class DashboardChartsView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        user = request.user
+        
+        # 1. Daily Sends - Last 30 Days
+        start_date = timezone.now() - timedelta(days=30)
+        daily_logs = EmailLog.objects.filter(
+            user=user, 
+            status='SENT', 
+            sent_at__gte=start_date
+        ).annotate(
+            day=TruncDay('sent_at')
+        ).values('day').annotate(
+            count=Count('id')
+        ).order_by('day')
+
+        daily_sends = []
+        # Prepopulate last 30 days to avoid gaps
+        day_map = { (timezone.now() - timedelta(days=i)).date().strftime('%b %d'): 0 for i in range(30) }
+        
+        for log in daily_logs:
+            if log['day']:
+                day_str = log['day'].date().strftime('%b %d')
+                day_map[day_str] = log['count']
+        
+        # Format as list sorted chronologically
+        daily_sends = [{"date": k, "count": v} for k, v in reversed(list(day_map.items()))]
+
+        # 2. Delivery Status Partition
+        status_counts = EmailLog.objects.filter(user=user).values('status').annotate(count=Count('id'))
+        delivery_status = [
+            {"name": "Sent", "value": 0, "color": "#10b981"},
+            {"name": "Failed", "value": 0, "color": "#ef4444"},
+            {"name": "Pending", "value": 0, "color": "#3b82f6"}
+        ]
+        
+        for stat in status_counts:
+            val = stat['status']
+            count = stat['count']
+            if val == 'SENT':
+                delivery_status[0]['value'] = count
+            elif val == 'FAILED':
+                delivery_status[1]['value'] = count
+            elif val == 'PENDING':
+                delivery_status[2]['value'] = count
+
+        # 3. Campaign Performance (Top 5 Campaigns by Volume)
+        campaigns_logs = Campaign.objects.filter(user=user).order_by('-created_at')[:5]
+        campaign_performance = [
+            {"name": c.name[:15] + "...", "sent": c.successful_count, "failed": c.failed_count, "replied": c.replied_count}
+            for c in campaigns_logs
+        ]
+
+        # 4. Monthly sends growth (Last 6 Months)
+        six_months_ago = timezone.now() - timedelta(days=180)
+        monthly_logs = EmailLog.objects.filter(
+            user=user, 
+            status='SENT', 
+            sent_at__gte=six_months_ago
+        ).annotate(
+            month=TruncMonth('sent_at')
+        ).values('month').annotate(
+            count=Count('id')
+        ).order_by('month')
+
+        monthly_growth = []
+        for log in monthly_logs:
+            if log['month']:
+                monthly_growth.append({
+                    "month": log['month'].strftime('%b %Y'),
+                    "count": log['count']
+                })
+
+        return Response({
+            "daily_sends": daily_sends,
+            "delivery_status": delivery_status,
+            "campaign_performance": campaign_performance,
+            "monthly_growth": monthly_growth
+        })
+
+class EmailHistoryListView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        user = request.user
+        
+        # Filtering & Search parameters
+        status_filter = request.query_params.get('status')
+        campaign_filter = request.query_params.get('campaign')
+        search_query = request.query_params.get('search')
+        
+        logs = EmailLog.objects.filter(user=user).order_by('-sent_at', '-id')
+        
+        if status_filter:
+            logs = logs.filter(status=status_filter.upper())
+        if campaign_filter:
+            logs = logs.filter(campaign__id=campaign_filter)
+        if search_query:
+            logs = logs.filter(
+                Q(recipient__icontains=search_query) |
+                Q(subject__icontains=search_query) |
+                Q(campaign__name__icontains=search_query)
+            )
+
+        # Pagination helper
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 10))
+        start = (page - 1) * page_size
+        end = start + page_size
+
+        total_count = logs.count()
+        paginated_logs = logs[start:end]
+        
+        serializer = EmailLogSerializer(paginated_logs, many=True)
+        return Response({
+            "results": serializer.data,
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size
+        })
+
+class ActivityLogListView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get(self, request):
+        logs = ActivityLog.objects.filter(user=request.user).order_by('-created_at')[:25]
+        serializer = ActivityLogSerializer(logs, many=True)
+        return Response(serializer.data)
+
+class EmailTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = EmailTemplateSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return EmailTemplate.objects.filter(user=self.request.user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        template = serializer.save(user=self.request.user)
+        ActivityLog.objects.create(user=self.request.user, action=f"Saved Email Template: {template.name}")
+
+    def perform_update(self, serializer):
+        template = serializer.save()
+        ActivityLog.objects.create(user=self.request.user, action=f"Updated Email Template: {template.name}")
+
+    def perform_destroy(self, instance):
+        name = instance.name
+        instance.delete()
+        ActivityLog.objects.create(user=self.request.user, action=f"Deleted Email Template: {name}")
+
+class ContactListViewSet(viewsets.ModelViewSet):
+    serializer_class = ContactListSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return ContactList.objects.filter(user=self.request.user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        contact_list = serializer.save(user=self.request.user)
+        ActivityLog.objects.create(user=self.request.user, action=f"Created Contact List: {contact_list.name}")
+
+class ContactViewSet(viewsets.ModelViewSet):
+    serializer_class = ContactSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def get_queryset(self):
+        return Contact.objects.filter(contact_list__user=self.request.user).order_by('-created_at')
+
+class CampaignStatusView(APIView):
+
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk):

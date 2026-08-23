@@ -6,7 +6,8 @@ import StatusToast from './StatusToast';
 import { sendEmails } from '../utils/api';
 import imgCsv from '../assets/snippet-csv.jpg';
 
-export default function PersonalizedCSV({ onNavigateToTracker }) {
+export default function PersonalizedCSV({ onNavigateToTracker, initialCampaignName = '' }) {
+  const [campaignName, setCampaignName] = useState(initialCampaignName);
   const [csvData, setCsvData] = useState(null);
   const [file, setFile] = useState(null);
   const [replyTo, setReplyTo] = useState('');
@@ -14,6 +15,7 @@ export default function PersonalizedCSV({ onNavigateToTracker }) {
   const [previewIndex, setPreviewIndex] = useState(0);
   const [showTable, setShowTable] = useState(false);
   const [toast, setToast] = useState(null);
+
 
   // Inline Editing States
   const [editingRowIndex, setEditingRowIndex] = useState(null);
@@ -71,24 +73,15 @@ export default function PersonalizedCSV({ onNavigateToTracker }) {
       }
     }));
 
-    let payload;
-    if (file) {
-      payload = new FormData();
-      payload.append('name', `Personalized Campaign (${csvData.validCount} rows)`);
-      payload.append('campaign_type', 'PERSONALIZED');
-      payload.append('subject', '{{Subject}}');
-      payload.append('body', '{{Body}}');
-      payload.append('recipients', JSON.stringify(recipients));
-      payload.append('attachment', file);
-    } else {
-      payload = {
-        name: `Personalized Campaign (${csvData.validCount} rows)`,
-        campaign_type: 'PERSONALIZED',
-        subject: '{{Subject}}',
-        body: '{{Body}}',
-        recipients
-      };
-    }
+    const payload = {
+      name: campaignName.trim() || `Personalized Campaign (${csvData.validCount} rows)`,
+
+      campaign_type: 'PERSONALIZED',
+      subject: '{{Subject}}',
+      body: '{{Body}}',
+      recipients
+    };
+
 
     try {
       await sendEmails(payload);

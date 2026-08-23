@@ -29,7 +29,7 @@ export default function SettingsTab() {
   const [gmailSuccess, setGmailSuccess] = useState('');
   const [gmailLoading, setGmailLoading] = useState(false);
   
-  // Custom SMTP settings state
+  // Custom / Hostinger SMTP settings state
   const [customHost, setCustomHost] = useState('mail.fastnexa.com');
   const [customPort, setCustomPort] = useState(465);
   const [customUseSsl, setCustomUseSsl] = useState(true);
@@ -71,6 +71,8 @@ export default function SettingsTab() {
         setCustomPort(data.smtp_port || 465);
         setCustomUseSsl(data.use_ssl !== undefined ? data.use_ssl : true);
         setCustomEmail(data.gmail_address || '');
+
+
         if (data.has_password) {
           setCustomPassword('••••••••••••');
         } else {
@@ -183,18 +185,24 @@ export default function SettingsTab() {
     try {
       const payload = {
         provider: 'custom',
-        smtp_host: customHost,
+        smtp_host: customHost.trim(),
         smtp_port: parseInt(customPort, 10),
         use_ssl: customUseSsl,
-        gmail_address: customEmail,
-        app_password: passToSend
+        gmail_address: customEmail.trim(),
+        app_password: passToSend,
+        imap_host: 'imap.hostinger.com',
+        imap_port: 993,
+        imap_use_ssl: true,
+        is_monitoring_enabled: true
       };
       await api.saveSMTP(payload);
-      setCustomSuccess('Hostinger/Custom SMTP configuration saved successfully!');
+      setCustomSuccess('Hostinger/Custom SMTP & IMAP configuration saved successfully!');
+
       // Clear any gmail form errors
       setGmailError('');
       setGmailSuccess('');
       fetchSMTPConfig();
+
     } catch (err) {
       setCustomError(err.response?.data?.error || err.response?.data?.detail || err.message || 'Failed to save SMTP settings.');
     } finally {
@@ -547,16 +555,30 @@ export default function SettingsTab() {
             <form onSubmit={handleSaveCustomSMTP} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="block space-y-1.5 sm:col-span-2">
-                  <span className="text-xs font-medium">SMTP Server Host</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium">SMTP Server Host</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomHost('smtp.hostinger.com');
+                        setCustomPort(465);
+                        setCustomUseSsl(true);
+                      }}
+                      className="text-[10px] text-cyan hover:underline cursor-pointer font-mono font-bold"
+                    >
+                      Fill Hostinger Preset (smtp.hostinger.com:465)
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={customHost}
                     onChange={(e) => setCustomHost(e.target.value)}
-                    placeholder="e.g. mail.fastnexa.com"
-                    className="input text-xs"
+                    placeholder="smtp.hostinger.com"
+                    className="input text-xs font-mono"
                     required
                   />
                 </label>
+
                 <label className="block space-y-1.5">
                   <span className="text-xs font-medium">Port</span>
                   <input

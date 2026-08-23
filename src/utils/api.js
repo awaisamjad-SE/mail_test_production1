@@ -1,14 +1,19 @@
 import axios from 'axios';
 
-export const DEFAULT_BACKEND_URL = import.meta.env.VITE_API_URL || 'https://mail.awaisamjad.engineer';
-
 export const getBackendUrl = () => {
-  return DEFAULT_BACKEND_URL;
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:8000';
+  }
+  return import.meta.env.VITE_API_URL || 'https://mail.awaisamjad.engineer';
 };
+
+
+export const DEFAULT_BACKEND_URL = getBackendUrl();
 
 export const setBackendUrl = (url) => {
   // no-op
 };
+
 
 const api = axios.create();
 
@@ -170,7 +175,21 @@ export const testSMTP = async () => {
 };
 
 // Campaigns & Sending
+export const sendDirectEmail = async (payload) => {
+  if (payload instanceof FormData) {
+    const response = await api.post('/api/send-direct/', payload, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+  const response = await api.post('/api/send-direct/', payload);
+  return response.data;
+};
+
 export const sendEmails = async (campaignPayload) => {
+
   if (campaignPayload instanceof FormData) {
     const response = await api.post('/api/campaigns/', campaignPayload, {
       headers: {
@@ -220,3 +239,31 @@ export const fetchActivityLogs = async () => {
   const response = await api.get('/api/activity-logs/');
   return response.data;
 };
+
+// Inbound Email Replies & IMAP Sync
+export const fetchInboundEmails = async (params = {}) => {
+  const response = await api.get('/api/inbound-emails/', { params });
+  return response.data;
+};
+
+export const triggerInboxSync = async () => {
+  const response = await api.post('/api/inbox/sync-now/');
+  return response.data;
+};
+
+export const updateInboundEmail = async (id, data) => {
+  const response = await api.patch(`/api/inbound-emails/${id}/`, data);
+  return response.data;
+};
+
+export const fetchSuppressions = async () => {
+  const response = await api.get('/api/suppressions/');
+  return response.data;
+};
+
+
+export const addSuppression = async (email, reason = 'Manually suppressed') => {
+  const response = await api.post('/api/suppressions/', { email, reason });
+  return response.data;
+};
+
