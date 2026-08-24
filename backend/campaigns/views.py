@@ -151,17 +151,20 @@ class DirectSendView(APIView):
             )
             created_logs.append(log)
             ActivityLog.objects.create(user=user, action=f"Direct email enqueued to {to_email}")
+
+            # Send email via Celery task (eager execution in-process)
             send_email_task.delay(str(log.id))
 
 
-
         if len(created_logs) == 1:
-            return Response(EmailLogSerializer(created_logs[0]).data, status=status.HTTP_201_CREATED)
+            log_refreshed = EmailLog.objects.get(id=created_logs[0].id)
+            return Response(EmailLogSerializer(log_refreshed).data, status=status.HTTP_201_CREATED)
         else:
+            refreshed_logs = EmailLog.objects.filter(id__in=[l.id for l in created_logs])
             return Response({
-                "message": f"Successfully enqueued {len(created_logs)} direct emails.",
-                "count": len(created_logs),
-                "emails": EmailLogSerializer(created_logs, many=True).data
+                "message": f"Successfully sent {len(refreshed_logs)} direct emails.",
+                "count": len(refreshed_logs),
+                "emails": EmailLogSerializer(refreshed_logs, many=True).data
             }, status=status.HTTP_201_CREATED)
 
 
@@ -647,10 +650,14 @@ class EmailHistoryListView(APIView):
     def get(self, request):
         user = request.user
 
-        # Auto-flush any pending logs in background thread
-        pending_logs = list(EmailLog.objects.filter(user=user, status='PENDING')[:10])
+        # Flush any pending logs synchronously
+        pending_logs = list(EmailLog.objects.filter(user=user, status='PENDING')[:15])
         for p in pending_logs:
-            dispatch_email(str(p.id))
+            try:
+                send_email_task.apply(args=[str(p.id)])
+            except Exception:
+                pass
+
 
         # Filtering & Search parameters
         status_filter = request.query_params.get('status')
