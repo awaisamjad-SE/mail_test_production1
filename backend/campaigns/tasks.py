@@ -18,15 +18,20 @@ from mailflow_backend.encryption import decrypt_password
 logger = logging.getLogger(__name__)
 
 def dispatch_email(email_log_id):
-    """Enqueues email for delivery via Celery, falling back to direct execution if Celery broker is offline."""
-    try:
-        send_email_task.delay(str(email_log_id))
-    except Exception as err:
-        logger.warning(f"Celery broker dispatch unavailable ({err}). Executing send task in fallback thread.")
-        import threading
-        def run_task():
+    """Dispatches email immediately in background thread to guarantee instant delivery without Celery delays."""
+    import threading
+    def run_task():
+        try:
             send_email_task.apply(args=[str(email_log_id)])
-        threading.Thread(target=run_task, daemon=True).start()
+        except Exception as err:
+            logger.warning(f"Direct task apply warning ({err}). Retrying via Celery delay.")
+            try:
+                send_email_task.delay(str(email_log_id))
+            except Exception:
+                pass
+
+    threading.Thread(target=run_task, daemon=True).start()
+
 
 
 @shared_task(bind=True, max_retries=3)

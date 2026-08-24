@@ -151,7 +151,8 @@ class DirectSendView(APIView):
             )
             created_logs.append(log)
             ActivityLog.objects.create(user=user, action=f"Direct email enqueued to {to_email}")
-            dispatch_email(str(log.id))
+            send_email_task.delay(str(log.id))
+
 
 
         if len(created_logs) == 1:
@@ -263,8 +264,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 status='PENDING'
             )
 
-            # Trigger resilient email dispatch
-            dispatch_email(str(log.id))
+            # Trigger Celery email dispatch
+            send_email_task.delay(str(log.id))
+
 
 
         return Response(CampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
@@ -644,13 +646,19 @@ class EmailHistoryListView(APIView):
 
     def get(self, request):
         user = request.user
-        
+
+        # Auto-flush any pending logs in background thread
+        pending_logs = list(EmailLog.objects.filter(user=user, status='PENDING')[:10])
+        for p in pending_logs:
+            dispatch_email(str(p.id))
+
         # Filtering & Search parameters
         status_filter = request.query_params.get('status')
         campaign_filter = request.query_params.get('campaign')
         search_query = request.query_params.get('search')
         
         logs = EmailLog.objects.filter(user=user).order_by('-sent_at', '-id')
+
         
         if status_filter:
             logs = logs.filter(status=status_filter.upper())

@@ -179,13 +179,15 @@ if not ENCRYPTION_KEY:
     from cryptography.fernet import Fernet
     ENCRYPTION_KEY = Fernet.generate_key().decode()
 
-# Celery Broker settings
+# Celery Broker & Task Settings
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_ALWAYS_EAGER = os.getenv('CELERY_TASK_ALWAYS_EAGER', 'True') == 'True'
+
 
 # Email Notification SMTP Backend Configurations
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
