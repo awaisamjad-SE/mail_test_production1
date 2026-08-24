@@ -12,7 +12,8 @@ from .serializers import (
     ContactListSerializer, ContactSerializer, ActivityLogSerializer,
     InboundEmailSerializer, GlobalSuppressionListSerializer
 )
-from .tasks import send_email_task, sync_user_inbox_task
+from .tasks import send_email_task, sync_user_inbox_task, dispatch_email
+
 from smtp_settings.models import SMTPCredential
 from .imap_engine import IMAPSyncEngine
 
@@ -150,7 +151,8 @@ class DirectSendView(APIView):
             )
             created_logs.append(log)
             ActivityLog.objects.create(user=user, action=f"Direct email enqueued to {to_email}")
-            send_email_task.delay(str(log.id))
+            dispatch_email(str(log.id))
+
 
         if len(created_logs) == 1:
             return Response(EmailLogSerializer(created_logs[0]).data, status=status.HTTP_201_CREATED)
@@ -261,8 +263,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 status='PENDING'
             )
 
-            # Trigger Celery background task
-            send_email_task.delay(str(log.id))
+            # Trigger resilient email dispatch
+            dispatch_email(str(log.id))
+
 
         return Response(CampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
 
