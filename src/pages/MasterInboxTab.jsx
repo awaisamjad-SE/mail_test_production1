@@ -44,6 +44,9 @@ export default function MasterInboxTab() {
       const res = await api.fetchInboundEmails();
       const items = res.results || res;
       setInboundEmails(items);
+      try {
+        sessionStorage.setItem('mailflow_inbox_cache', JSON.stringify(items));
+      } catch (e) {}
       if (items.length > 0 && !selectedEmail) {
         setSelectedEmail(items[0]);
       }
@@ -56,6 +59,18 @@ export default function MasterInboxTab() {
   };
 
   useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem('mailflow_inbox_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setInboundEmails(parsed);
+          setSelectedEmail(parsed[0]);
+          setLoading(false);
+        }
+      }
+    } catch (e) {}
+
     fetchEmails();
     api.fetchSMTPSettings().then(res => {
       const email = res.gmail_address || res[0]?.gmail_address;

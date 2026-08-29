@@ -79,15 +79,24 @@ class ManualInboxSyncView(APIView):
         user = request.user
         try:
             cred = SMTPCredential.objects.get(user=user)
-            engine = IMAPSyncEngine(cred)
-            res = engine.sync_inbox()
-            if res.get('status') == 'NOTICE':
-                return Response({
-                    "status": "NOTICE",
-                    "error": f"IMAP sync notice: {res.get('error')}",
-                    "details": res
-                }, status=status.HTTP_200_OK)
-            return Response({"status": "SUCCESS", "details": res}, status=status.HTTP_200_OK)
+            # Dispatch background Celery task or thread immediately
+            try:
+                sync_user_inbox_task.delay(str(cred.id))
+            except Exception:
+                import threading
+                def run_bg():
+                    try:
+                        engine = IMAPSyncEngine(cred)
+                        engine.sync_inbox()
+                    except Exception:
+                        pass
+                threading.Thread(target=run_bg, daemon=True).start()
+
+            return Response({
+                "status": "SUCCESS",
+                "message": "IMAP sync initiated in background worker.",
+                "details": {"status": "SYNCING", "processed_count": 0}
+            }, status=status.HTTP_200_OK)
         except SMTPCredential.DoesNotExist:
             return Response({"error": "SMTP/IMAP settings not configured for this user."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
