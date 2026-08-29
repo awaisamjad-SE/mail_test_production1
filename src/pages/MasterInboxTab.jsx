@@ -2,11 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   Inbox, Flame, HelpCircle, Ban, UserX, AlertTriangle, Plane, Star, 
   Search, RefreshCw, Send, Paperclip, Loader2, CheckCircle2, ShieldAlert,
-  ArrowRight, Filter, ChevronRight, CornerUpLeft, Mail, User, Clock, Trash2
+  ArrowRight, ArrowLeft, Filter, ChevronRight, CornerUpLeft, Mail, User, Clock, Trash2
 } from 'lucide-react';
 import * as api from '../utils/api';
 
 export default function MasterInboxTab() {
+  const [mobileViewMode, setMobileViewMode] = useState('LIST'); // 'LIST' vs 'THREAD' for mobile screens
   const [inboundEmails, setInboundEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,6 +141,7 @@ export default function MasterInboxTab() {
 
   const handleSelectEmail = async (emailItem) => {
     setSelectedEmail(emailItem);
+    setMobileViewMode('THREAD');
     setReplySuccess(null);
     setReplyBody('');
     setShowReplyComposer(false);
@@ -431,7 +433,9 @@ export default function MasterInboxTab() {
       {/* Split Pane Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[620px]">
         {/* Left Threads Column (4 cols) */}
-        <div className="lg:col-span-4 rounded-3xl glass border border-border p-4 flex flex-col justify-between gap-3 min-h-[500px]">
+        <div className={`lg:col-span-4 rounded-3xl glass border border-border p-4 flex-col justify-between gap-3 min-h-[500px] ${
+          mobileViewMode === 'THREAD' ? 'hidden lg:flex' : 'flex'
+        }`}>
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs font-mono px-1">
               <div>
@@ -531,7 +535,22 @@ export default function MasterInboxTab() {
         </div>
 
         {/* Right Selected Lead Workspace (8 cols) */}
-        <div className="lg:col-span-8 rounded-3xl glass border border-border p-6 flex flex-col justify-between gap-5 min-h-[500px]">
+        <div className={`lg:col-span-8 rounded-3xl glass border border-border p-4 lg:p-6 flex-col justify-between gap-5 min-h-[500px] ${
+          mobileViewMode === 'LIST' ? 'hidden lg:flex' : 'flex'
+        }`}>
+          {/* Mobile Back Header */}
+          <div className="lg:hidden flex items-center justify-between pb-3 mb-2 border-b border-border text-xs font-mono">
+            <button
+              onClick={() => setMobileViewMode('LIST')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan/15 border border-cyan/30 text-cyan font-bold cursor-pointer hover:bg-cyan/20 transition"
+            >
+              <ArrowLeft className="size-4" /> Back to Threads
+            </button>
+            <span className="text-[10px] text-muted-foreground bg-white/5 px-2.5 py-1 rounded-lg border border-border font-bold">
+              {filteredEmails.length} Conversations
+            </span>
+          </div>
+
           {selectedEmail ? (
             <div className="flex-1 flex flex-col justify-between space-y-5 overflow-y-auto pr-1 scrollbar-thin">
               <div className="space-y-4">

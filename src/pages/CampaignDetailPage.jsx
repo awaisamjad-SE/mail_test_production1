@@ -56,6 +56,148 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
     document.body.removeChild(link);
   };
 
+  const generatePDFReport = (reportTitle) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('Pop-up blocked. Please allow pop-ups to generate PDF report.');
+      return;
+    }
+
+    const createdTime = new Date(campaign?.created_at || Date.now()).toLocaleString();
+    const exportTime = new Date().toLocaleString();
+    const totalRecip = campaign?.total_recipients || recipientsLogs.length || 0;
+    const sentCount = campaign?.successful_count || recipientsLogs.filter(l => l.status === 'SENT').length || 0;
+    const failedCount = campaign?.failed_count || recipientsLogs.filter(l => l.status === 'FAILED').length || 0;
+    const repliedCount = campaign?.replied_count || inboundReplies.length || 0;
+    const delivRate = totalRecip > 0 ? Math.round((sentCount / totalRecip) * 100) : 100;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>MailFlow Telemetry PDF Report - ${campaign?.name || 'Campaign'}</title>
+        <style>
+          @page { size: A4; margin: 15mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: #ffffff; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #06b6d4; padding-bottom: 16px; margin-bottom: 24px; }
+          .logo { font-size: 24px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; }
+          .logo span { color: #06b6d4; }
+          .badge { background: #ecfeff; color: #0891b2; border: 1px solid #cff4fc; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; font-family: monospace; }
+          .title { font-size: 20px; font-weight: 800; color: #0f172a; margin-top: 8px; }
+          .meta { font-size: 11px; color: #64748b; font-family: monospace; margin-top: 4px; }
+          .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
+          .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 14px; }
+          .card-label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; font-family: monospace; }
+          .card-val { font-size: 22px; font-weight: 800; color: #0f172a; margin-top: 4px; }
+          .section-title { font-size: 13px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; margin: 28px 0 12px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; font-family: monospace; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+          th { background: #f1f5f9; color: #475569; font-weight: 700; text-align: left; padding: 10px 12px; border-bottom: 2px solid #cbd5e1; font-family: monospace; text-transform: uppercase; }
+          td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; color: #334155; }
+          .status-tag { display: inline-block; padding: 3px 8px; border-radius: 12px; font-weight: 700; font-size: 10px; font-family: monospace; }
+          .status-sent { background: #dcfce7; color: #166534; }
+          .status-failed { background: #ffe4e6; color: #9f1239; }
+          .status-reply { background: #cff4fc; color: #0891b2; }
+          .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 16px; font-size: 10px; color: #94a3b8; font-family: monospace; display: flex; justify-content: space-between; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="logo">MailFlow <span>Ops Console</span></div>
+            <div class="title">${reportTitle}</div>
+            <div class="meta">Campaign ID: ${campaign?.id || 'N/A'} &bull; Created: ${createdTime}</div>
+          </div>
+          <div>
+            <span class="badge">EXECUTIVE PDF REPORT</span>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="card">
+            <div class="card-label">Total Recipients</div>
+            <div class="card-val">${totalRecip}</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Delivered</div>
+            <div class="card-val" style="color: #16a34a;">${sentCount}</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Lead Replies</div>
+            <div class="card-val" style="color: #0891b2;">${repliedCount}</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Delivery Health</div>
+            <div class="card-val" style="color: #0284c7;">${delivRate}%</div>
+          </div>
+        </div>
+
+        <div class="section-title">Recipient Dispatch Audit Table</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Recipient Email</th>
+              <th>Subject Line</th>
+              <th>Dispatch Status</th>
+              <th>Sent Timestamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${recipientsLogs.map(l => `
+              <tr>
+                <td><strong>${l.recipient || ''}</strong></td>
+                <td>${(l.subject || '').substring(0, 45)}</td>
+                <td><span class="status-tag ${l.status === 'SENT' ? 'status-sent' : 'status-failed'}">${l.status || 'PENDING'}</span></td>
+                <td style="font-family: monospace;">${l.sent_at || 'N/A'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        ${inboundReplies.length > 0 ? `
+          <div class="section-title">Lead Reply Transcripts (${inboundReplies.length})</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Lead Sender</th>
+                <th>Classification</th>
+                <th>Sentiment</th>
+                <th>Received At</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${inboundReplies.map(r => `
+                <tr>
+                  <td><strong>${r.sender_name || r.sender_email}</strong> (${r.sender_email})</td>
+                  <td><span class="status-tag status-reply">${r.classification || 'HUMAN_REPLY'}</span></td>
+                  <td><strong>${r.sentiment || 'POSITIVE'}</strong></td>
+                  <td style="font-family: monospace;">${r.received_at || r.processed_at || 'N/A'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : ''}
+
+        <div class="footer">
+          <div>Generated by MailFlow Telemetry Engine</div>
+          <div>Report Timestamp: ${exportTime}</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   const handleExportReport = (reportType) => {
     const timeStr = new Date().toISOString().replace(/[:.]/g, '-');
     if (reportType === 'Recipient Activity CSV') {
@@ -97,23 +239,9 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
       const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       downloadCSV(`campaign-${campaign.id}-replies-${timeStr}.csv`, csv);
       showToast('Lead Reply Transcript downloaded');
-    } else if (reportType === 'Full Telemetry Package') {
-      const fullPackage = {
-        campaign_summary: campaign,
-        recipients_audit: recipientsLogs,
-        inbound_replies: inboundReplies,
-        exported_at: new Date().toISOString()
-      };
-      const jsonStr = JSON.stringify(fullPackage, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `campaign-${campaign.id}-telemetry-${timeStr}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast('Full Telemetry Package JSON downloaded');
+    } else if (reportType === 'Executive Telemetry PDF Report' || reportType === 'Full Telemetry Package') {
+      generatePDFReport(`Executive Telemetry Report - ${campaign?.name || ''}`);
+      showToast('Generating Executive Telemetry PDF Report...');
     }
     setShowExportModal(false);
   };
@@ -1001,10 +1129,10 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
 
               <div className="space-y-2.5 text-xs">
                 {[
-                  { name: 'Recipient Activity CSV', desc: 'Download CSV of all 7 target recipient dispatches & timestamps' },
-                  { name: 'Delivery & Bounce Audit Report', desc: 'Download diagnostic log of hard/soft SMTP bounces' },
-                  { name: 'Lead Reply Transcript', desc: 'Export full inbound lead messages and sentiment scores' },
-                  { name: 'Full Telemetry Package', desc: 'Export complete JSON package of campaign metrics' }
+                  { name: 'Executive Telemetry PDF Report', desc: 'Generate printable executive PDF document with delivery metrics & audit tables' },
+                  { name: 'Recipient Activity CSV', desc: 'Download CSV of all target recipient dispatches & timestamps' },
+                  { name: 'Delivery & Bounce Audit Report', desc: 'Download CSV log of hard/soft SMTP bounces' },
+                  { name: 'Lead Reply Transcript', desc: 'Export CSV of full inbound lead messages and sentiment scores' }
                 ].map(opt => (
                   <button
                     key={opt.name}

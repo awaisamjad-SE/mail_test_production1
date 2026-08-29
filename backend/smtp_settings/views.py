@@ -103,31 +103,33 @@ class SMTPTestConnectionView(APIView):
 
             # Test connection to SMTP server dynamically
             try:
+                connection_attempts = []
                 if smtp.provider == 'gmail':
-                    host = 'smtp.gmail.com'
-                    port = 587
-                    use_ssl = False
+                    connection_attempts.append(('smtp.gmail.com', 587, False))
                 else:
-                    host = (smtp.smtp_host or 'mail.fastnexa.com').strip()
-                    port = int(smtp.smtp_port or 465)
-                    use_ssl = smtp.use_ssl if smtp.use_ssl is not None else (port == 465)
+                    primary_host = (smtp.smtp_host or 'mail.fastnexa.com').strip()
+                    primary_port = int(smtp.smtp_port or 465)
+                    primary_ssl = smtp.use_ssl if smtp.use_ssl is not None else (primary_port == 465)
 
-                hosts_to_try = [host]
-                if host != 'smtp.hostinger.com':
-                    hosts_to_try.append('smtp.hostinger.com')
+                    connection_attempts.append((primary_host, primary_port, primary_ssl))
+                    if primary_port != 587:
+                        connection_attempts.append((primary_host, 587, False))
+                    if primary_host != 'smtp.hostinger.com':
+                        connection_attempts.append(('smtp.hostinger.com', 465, True))
+                        connection_attempts.append(('smtp.hostinger.com', 587, False))
 
                 server = None
                 last_err = None
-                connected_host = host
-                for h in hosts_to_try:
+                connected_info = ""
+                for host, port, use_ssl in connection_attempts:
                     try:
                         if use_ssl or port == 465:
-                            server = smtplib.SMTP_SSL(h, port, timeout=8)
+                            server = smtplib.SMTP_SSL(host, port, timeout=12)
                         else:
-                            server = smtplib.SMTP(h, port, timeout=8)
+                            server = smtplib.SMTP(host, port, timeout=12)
                             server.starttls()
                         server.login(smtp.gmail_address, password)
-                        connected_host = h
+                        connected_info = f"{host}:{port}"
                         break
                     except Exception as err:
                         last_err = err
@@ -141,8 +143,8 @@ class SMTPTestConnectionView(APIView):
                 smtp.is_verified = True
                 smtp.save()
 
-                ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Successful ({host}:{port})")
-                return Response({"status": "Success", "message": f"SMTP connection to {host}:{port} verified successfully!"})
+                ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Successful ({connected_info})")
+                return Response({"status": "Success", "message": f"SMTP connection to {connected_info} verified successfully!"})
             except smtplib.SMTPAuthenticationError as auth_err:
                 smtp.is_verified = False
                 smtp.save()

@@ -167,31 +167,40 @@ def send_email_task(self, email_log_id):
     # Save debug trace .eml if MAILFLOW_EMAIL_DEBUG is active
     DebugEmailLogger.dump_eml(msg, str(log.id))
 
-    # 6. Connect and Send
+    # 6. Connect and Send with Smart Port & Host Fallbacks
     try:
+        connection_attempts = []
         if smtp.provider == 'gmail':
-            host = 'smtp.gmail.com'
-            port = 587
-            use_ssl = False
+            connection_attempts.append(('smtp.gmail.com', 587, False))
         else:
-            host = smtp.smtp_host or 'mail.fastnexa.com'
-            port = int(smtp.smtp_port or 465)
-            use_ssl = smtp.use_ssl if smtp.use_ssl is not None else (port == 465)
+            primary_host = (smtp.smtp_host or 'mail.fastnexa.com').strip()
+            primary_port = int(smtp.smtp_port or 465)
+            primary_ssl = smtp.use_ssl if smtp.use_ssl is not None else (primary_port == 465)
 
-        hosts_to_try = [host]
+            connection_attempts.append((primary_host, primary_port, primary_ssl))
+            
+            # Port 587 STARTTLS fallback for custom domains
+            if primary_port != 587:
+                connection_attempts.append((primary_host, 587, False))
+
+            # Hostinger fallback cluster if primary host differs from smtp.hostinger.com
+            if primary_host != 'smtp.hostinger.com':
+                connection_attempts.append(('smtp.hostinger.com', 465, True))
+                connection_attempts.append(('smtp.hostinger.com', 587, False))
 
         server = None
         last_err = None
-        for h in hosts_to_try:
+        for host, port, use_ssl in connection_attempts:
             try:
                 if use_ssl or port == 465:
-                    server = smtplib.SMTP_SSL(h, port, timeout=10)
+                    server = smtplib.SMTP_SSL(host, port, timeout=15)
                 else:
-                    server = smtplib.SMTP(h, port, timeout=10)
+                    server = smtplib.SMTP(host, port, timeout=15)
                     server.starttls()
                 server.login(authenticated_sender, password)
                 break
             except Exception as err:
+                logger.warning(f"SMTP Connection attempt ({host}:{port}, ssl={use_ssl}) failed: {err}")
                 last_err = err
 
         if not server:
