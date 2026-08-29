@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { LineChart as LineChartIcon, ScrollText, RefreshCw, Trash2, Loader2, MessageSquare, ChevronLeft, ChevronRight, Search, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { LineChart as LineChartIcon, ScrollText, RefreshCw, Trash2, Loader2, MessageSquare, ChevronLeft, ChevronRight, Search, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
 import * as api from '../utils/api';
 import imgTracker from '../assets/snippet-tracker.jpg';
+import CampaignDetailPage from './CampaignDetailPage';
 
-export default function TrackerAndLogsTab() {
+export default function TrackerAndLogsTab({ onNavigateToInbox }) {
   const [activeSubTab, setActiveSubTab] = useState('campaigns'); // 'campaigns' vs 'individual'
 
   // Campaigns State
@@ -59,21 +60,13 @@ export default function TrackerAndLogsTab() {
     fetchCampaigns();
 
     pollIntervalRef.current = setInterval(async () => {
-      let hasProcessing = false;
-      setCampaigns(prev => {
-        hasProcessing = prev.some(c => c.status === 'Processing');
-        return prev;
-      });
-
-      if (hasProcessing) {
-        try {
-          const freshCampaigns = await api.fetchCampaigns();
-          setCampaigns(freshCampaigns);
-        } catch (e) {
-          console.error('Failed to poll campaigns:', e);
-        }
+      try {
+        const freshCampaigns = await api.fetchCampaigns();
+        setCampaigns(freshCampaigns);
+      } catch (e) {
+        console.error('Failed to poll campaigns:', e);
       }
-    }, 4000);
+    }, 5000);
 
     return () => {
       if (pollIntervalRef.current) {
@@ -110,17 +103,9 @@ export default function TrackerAndLogsTab() {
     }
   };
 
-  const handleOpenReplies = async (campaign) => {
+  const handleOpenReplies = (campaign) => {
     setSelectedCampaign(campaign);
-    setLoadingReplies(true);
-    try {
-      const res = await api.fetchInboundEmails({ campaign: campaign.id });
-      setInboundReplies(res.results || res);
-    } catch (err) {
-      console.error('Failed to load campaign replies:', err);
-    } finally {
-      setLoadingReplies(false);
-    }
+    window.history.pushState({}, '', `/campaigns/${campaign.id}`);
   };
 
   const getStatusPill = (status) => {
@@ -140,6 +125,19 @@ export default function TrackerAndLogsTab() {
       </span>
     );
   };
+
+  if (selectedCampaign) {
+    return (
+      <CampaignDetailPage 
+        campaignId={selectedCampaign.id} 
+        onBack={() => {
+          setSelectedCampaign(null);
+          window.history.pushState({}, '', '/dashboard');
+        }} 
+        onNavigateToInbox={onNavigateToInbox}
+      />
+    );
+  }
 
   const logsTotalPages = Math.ceil(logsTotalCount / 10) || 1;
 
@@ -327,7 +325,14 @@ export default function TrackerAndLogsTab() {
                       <tr key={log.id} className="hover:bg-white/[0.02] transition">
                         <td className="p-4 font-bold text-foreground">{log.recipient}</td>
                         <td className="p-4 text-muted-foreground max-w-xs truncate">{log.subject}</td>
-                        <td className="p-4">{getStatusPill(log.status)}</td>
+                        <td className="p-4">
+                          {getStatusPill(log.status)}
+                          {log.error_message && (
+                            <p className="text-[10px] text-rose/90 font-mono mt-1 max-w-xs truncate" title={log.error_message}>
+                              {log.error_message}
+                            </p>
+                          )}
+                        </td>
                         <td className="p-4">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             log.reply_status === 'REPLIED' ? 'bg-lime/20 text-lime' :

@@ -1,6 +1,12 @@
 import axios from 'axios';
 
 export const getBackendUrl = () => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
+      return import.meta.env.VITE_LOCAL_API_URL || 'http://127.0.0.1:8000';
+    }
+  }
   return import.meta.env.VITE_API_URL || 'https://mail.awaisamjad.engineer';
 };
 
@@ -249,6 +255,11 @@ export const triggerInboxSync = async () => {
   return response.data;
 };
 
+export const purgeSocialEmails = async () => {
+  const response = await api.post('/api/inbox/purge-social/');
+  return response.data;
+};
+
 export const updateInboundEmail = async (id, data) => {
   const response = await api.patch(`/api/inbound-emails/${id}/`, data);
   return response.data;
@@ -262,6 +273,11 @@ export const fetchSuppressions = async () => {
 
 export const addSuppression = async (email, reason = 'Manually suppressed') => {
   const response = await api.post('/api/suppressions/', { email, reason });
+  return response.data;
+};
+
+export const fetchSMTPSettings = async () => {
+  const response = await api.get('/api/smtp/');
   return response.data;
 };
 

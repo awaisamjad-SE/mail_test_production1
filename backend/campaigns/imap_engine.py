@@ -160,8 +160,16 @@ class IMAPSyncEngine:
             mail.logout()
             return 0
 
+        # If doing initial sync (last_uid == 0), target the most recent 100 UIDs for instant reply detection
+        if last_uid == 0 and len(uids) > 100:
+            max_uid_in_inbox = int(uids[-1])
+            uids = uids[-100:]
+            # Set last_uid checkpoint baseline so we don't re-scan ancient emails
+            self.credential.last_imap_uid = max_uid_in_inbox - 100
+            self.credential.save(update_fields=['last_imap_uid'])
+
         processed_count = 0
-        max_processed_uid = last_uid
+        max_processed_uid = last_uid or int(uids[0])
 
         for uid_bytes in uids:
             uid = int(uid_bytes)
@@ -216,12 +224,22 @@ class IMAPSyncEngine:
         _, recipient_email = self._parse_address_header(recipient_header)
         subject = sanitize_email_header(msg.get("Subject", ""))
 
+        # Filter out social/automated notifications from entering Unibox
+        automated_domains = ['facebookmail.com', 'linkedin.com', 'twitter.com', 'github.com', 'notifications.google.com', 'google.com', 'youtube.com', 'instagram.com', 'tiktok.com', 'indeed.com', 'groq.co', 'clickup.com', 'amazon.com', 'codecademy.com', 'abl.com', 'snov.io', 'blueticks.co', 'hbl.com', 'binance.com', 'snapchat.com', 'foodpanda.pk', 'telenorbank.pk', 'ubl.com.pk', 'apollo.io', 'moodle.org', 'oracle.com', 'hubspot.com', 'bayt.com', 'ipinfo.io', 'jobscan.co']
+        automated_prefixes = ('no-reply@', 'noreply@', 'donotreply@', 'do_not_reply@', 'notification@', 'notifications@', 'mailer@', 'news@', 'andy-noreply@', 'jobalert@', 'securityalerts@')
+        sender_lower = sender_email.lower()
+        if any(dom in sender_lower for dom in automated_domains) or sender_lower.startswith(automated_prefixes):
+            logger.info(f"Skipping social/automated notification from {sender_email}")
+            return
+
         # Extract Body text and HTML
         body_text, body_html = self._extract_body(msg)
 
         # Classification (Bounce vs Auto-Reply vs Human Reply)
         classification = self._classify_message(msg, subject, body_text, sender_email)
-        sentiment = self._analyze_sentiment(body_text, subject) if classification == 'HUMAN_REPLY' else 'UNKNOWN'
+        sentiment = self._analyze_sentiment(body_text, subject, sender_email) if classification == 'HUMAN_REPLY' else 'NEUTRAL'
+
+        is_bounce = (classification == 'BOUNCE')
 
         # Multi-Tier Thread & EmailLog Matching
         email_log = self._find_matching_email_log(
@@ -229,7 +247,9 @@ class IMAPSyncEngine:
             references=references_list,
             custom_header=msg.get("X-FastNexa-EmailLog-ID"),
             sender_email=sender_email,
-            user=self.user
+            user=self.user,
+            body_text=body_text,
+            is_bounce=is_bounce
         )
 
         campaign = email_log.campaign if email_log else None
@@ -280,13 +300,21 @@ class IMAPSyncEngine:
                             Campaign.objects.filter(pk=campaign.pk).update(auto_reply_count=models.F('auto_reply_count') + 1)
 
                 elif classification == 'BOUNCE':
-                    if email_log.reply_status != 'BOUNCED':
-                        email_log.reply_status = 'BOUNCED'
-                        if campaign:
-                            Campaign.objects.filter(pk=campaign.pk).update(bounced_count=models.F('bounced_count') + 1)
+                    bounce_type, status_code = self._parse_bounce_details(body_text, subject)
+                    email_log.reply_status = 'BOUNCED'
+                    email_log.status = 'FAILED'
+                    email_log.error_message = f"Bounced ({bounce_type}): Delivery failed to recipient"
+                    if campaign:
+                        Campaign.objects.filter(pk=campaign.pk).update(
+                            bounced_count=models.F('bounced_count') + 1,
+                            failed_count=models.F('failed_count') + 1,
+                            successful_count=models.Case(
+                                models.When(successful_count__gt=0, then=models.F('successful_count') - 1),
+                                default=models.F('successful_count')
+                            )
+                        )
 
                     # Create BounceDetail
-                    bounce_type, status_code = self._parse_bounce_details(body_text, subject)
                     BounceDetail.objects.create(
                         inbound_email=inbound_email,
                         email_log=email_log,
@@ -305,9 +333,13 @@ class IMAPSyncEngine:
                     if campaign:
                         Campaign.objects.filter(pk=campaign.pk).update(unsubscribed_count=models.F('unsubscribed_count') + 1)
 
-                email_log.save(update_fields=['reply_status', 'last_inbound_at'])
+                email_log.save(update_fields=['reply_status', 'status', 'error_message', 'last_inbound_at'])
 
             # Log Activity
+            ActivityLog.objects.create(
+                user=self.user,
+                action=f"Inbound email received from {sender_email} ({classification})"
+            )
             ActivityLog.objects.create(
                 user=self.user,
                 action=f"Inbound email received from {sender_email} ({classification})"
@@ -362,6 +394,12 @@ class IMAPSyncEngine:
         subj_lower = subject.lower()
         sender_lower = sender_email.lower()
 
+        # 0. Automated Service & Social Media Notification Detection
+        automated_domains = ['facebookmail.com', 'linkedin.com', 'twitter.com', 'github.com', 'notifications.google.com', 'youtube.com', 'instagram.com', 'tiktok.com']
+        automated_prefixes = ('no-reply@', 'noreply@', 'notification@', 'notifications@', 'mailer@', 'news@')
+        if any(dom in sender_lower for dom in automated_domains) or sender_lower.startswith(automated_prefixes):
+            return 'UNKNOWN'
+
         # 1. Bounce Detection
         bounce_senders = ['mailer-daemon', 'postmaster', 'mail delivery subsystem', 'daemon@']
         if any(b in sender_lower for b in bounce_senders) or 'delivery status notification' in subj_lower or 'undelivered mail' in subj_lower:
@@ -381,11 +419,33 @@ class IMAPSyncEngine:
 
         return 'HUMAN_REPLY'
 
-    def _analyze_sentiment(self, body_text, subject):
+    def _analyze_sentiment(self, body_text, subject, sender_email=''):
+        sender_lower = sender_email.lower()
+        automated_domains = ['facebookmail.com', 'linkedin.com', 'twitter.com', 'github.com', 'notifications.google.com', 'youtube.com', 'instagram.com', 'tiktok.com']
+        automated_prefixes = ('no-reply@', 'noreply@', 'notification@', 'notifications@', 'mailer@', 'news@')
+        if any(dom in sender_lower for dom in automated_domains) or sender_lower.startswith(automated_prefixes):
+            return 'NEUTRAL'
+
         text = (body_text + " " + subject).lower()
 
-        unsubscribe_kw = ['unsubscribe', 'remove me', 'stop emailing', 'take me off', 'do not contact']
-        if any(kw in text for kw in unsubscribe_kw):
+        if 'calendar.google.com' in text or 'invitation:' in text:
+            return 'NEUTRAL'
+
+        # Strip standard boilerplate unsubscribe footer phrases
+        footer_phrases = [
+            "if you don't want to receive these emails",
+            "follow the link below to unsubscribe",
+            "click here to unsubscribe",
+            "unsubscribe from notifications",
+            "please follow the link below to unsubscribe",
+            "link below to unsubscribe"
+        ]
+        clean_text = text
+        for phrase in footer_phrases:
+            clean_text = clean_text.replace(phrase, "")
+
+        unsubscribe_kw = ['please unsubscribe', 'unsubscribe me', 'remove me', 'stop emailing', 'take me off', 'do not contact']
+        if any(kw in clean_text for kw in unsubscribe_kw):
             return 'UNSUBSCRIBE'
 
         interested_kw = ['interested', 'let\'s talk', 'schedule a call', 'book a demo', 'sounds good', 'send more info', 'pricing']
@@ -402,7 +462,18 @@ class IMAPSyncEngine:
 
         return 'NEUTRAL'
 
-    def _find_matching_email_log(self, in_reply_to, references, custom_header, sender_email, user):
+    def _find_matching_email_log(self, in_reply_to, references, custom_header, sender_email, user, body_text='', is_bounce=False):
+        # Tier 0: For BOUNCE emails, extract failed recipient email address from body
+        if is_bounce and body_text:
+            extracted_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', body_text)
+            user_email = user.email.lower() if (user and user.email) else ''
+            for target_email in extracted_emails:
+                t_lower = target_email.lower()
+                if t_lower != user_email and not any(b in t_lower for b in ['daemon', 'postmaster', 'googlemail', 'gmail.com', 'hostinger']):
+                    log = EmailLog.objects.filter(user=user, recipient__iexact=t_lower).order_by('-sent_at').first()
+                    if log:
+                        return log
+
         # Tier 1: Match exact In-Reply-To
         if in_reply_to:
             log = EmailLog.objects.filter(user=user, message_id=in_reply_to).first()
@@ -421,9 +492,9 @@ class IMAPSyncEngine:
             if log:
                 return log
 
-        # Tier 4: Fallback to matching recipient email address on most recent sent log
+        # Tier 4: Fallback to matching recipient email address on most recent email log
         if sender_email:
-            log = EmailLog.objects.filter(user=user, recipient=sender_email, status='SENT').order_by('-sent_at').first()
+            log = EmailLog.objects.filter(user=user, recipient__iexact=sender_email).order_by('-sent_at').first()
             if log:
                 return log
 

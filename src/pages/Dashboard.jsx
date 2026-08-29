@@ -15,6 +15,7 @@ import QuickSend from '../components/QuickSend';
 import CampaignsHub from './CampaignsHub';
 import TrackerAndLogsTab from './TrackerAndLogsTab';
 import SettingsTab from './SettingsTab';
+import CampaignDetailPage from './CampaignDetailPage';
 
 const NAV = [
   { key: 'overview', label: 'Overview', icon: Activity, hint: 'Ops' },
@@ -33,6 +34,29 @@ export default function Dashboard() {
   const [smtpConfigured, setSmtpConfigured] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  const getURLCampaignId = () => {
+    const path = window.location.pathname;
+    if (path.startsWith('/campaigns/')) {
+      return path.split('/campaigns/')[1];
+    }
+    return null;
+  };
+
+  const [routeCampaignId, setRouteCampaignId] = useState(getURLCampaignId());
+
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const path = window.location.pathname;
+      if (path.startsWith('/campaigns/')) {
+        setRouteCampaignId(path.split('/campaigns/')[1]);
+      } else {
+        setRouteCampaignId(null);
+      }
+    };
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
+
   // Check SMTP setup status on load and on tab switches
   useEffect(() => {
     const checkSMTP = async () => {
@@ -50,7 +74,27 @@ export default function Dashboard() {
     checkSMTP();
   }, [activeTab]);
 
+  const handleNavigateToInbox = (emailAddress) => {
+    setRouteCampaignId(null);
+    window.history.pushState({}, '', '/dashboard');
+    setActiveTab('inbox');
+  };
+
   const renderActiveComponent = () => {
+    if (routeCampaignId) {
+      return (
+        <CampaignDetailPage
+          campaignId={routeCampaignId}
+          onBack={() => {
+            setRouteCampaignId(null);
+            window.history.pushState({}, '', '/dashboard');
+            setActiveTab('campaigns');
+          }}
+          onNavigateToInbox={handleNavigateToInbox}
+        />
+      );
+    }
+
     switch (activeTab) {
       case 'overview':
         return <OverviewTab />;
@@ -59,9 +103,9 @@ export default function Dashboard() {
       case 'quick':
         return <QuickSend onNavigateToTracker={() => setActiveTab('tracker')} />;
       case 'campaigns':
-        return <CampaignsHub onNavigateToTracker={() => setActiveTab('tracker')} />;
+        return <CampaignsHub onNavigateToTracker={() => setActiveTab('tracker')} onNavigateToInbox={handleNavigateToInbox} />;
       case 'tracker':
-        return <TrackerAndLogsTab />;
+        return <TrackerAndLogsTab onNavigateToInbox={handleNavigateToInbox} />;
       case 'settings':
         return <SettingsTab />;
       default:
@@ -113,6 +157,9 @@ export default function Dashboard() {
                     onClick={() => {
                       setActiveTab(item.key);
                       setIsMobileMenuOpen(false);
+                      if (item.key === 'inbox') {
+                        setIsCollapsed(true);
+                      }
                     }}
                     className={`group relative w-full flex items-center ${isCollapsed ? 'justify-center p-2.5' : 'gap-3 px-3 py-2.5'} rounded-xl text-sm transition-all cursor-pointer
                       ${active ? 'bg-gradient-to-r from-lime/15 to-cyan/10 text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-white/[0.03]'}`}

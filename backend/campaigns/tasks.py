@@ -117,7 +117,7 @@ def send_email_task(self, email_log_id):
     sender_domain = authenticated_sender.split('@')[-1] if '@' in authenticated_sender else 'mailflow.engineer'
 
     if not log.message_id:
-        raw_msg_id = make_msgid(id=str(log.id), domain=sender_domain)
+        raw_msg_id = make_msgid(idstring=str(log.id), domain=sender_domain)
         log.message_id = normalize_message_id(raw_msg_id)
         log.save(update_fields=['message_id'])
 
@@ -179,8 +179,6 @@ def send_email_task(self, email_log_id):
             use_ssl = smtp.use_ssl if smtp.use_ssl is not None else (port == 465)
 
         hosts_to_try = [host]
-        if host != 'smtp.hostinger.com':
-            hosts_to_try.append('smtp.hostinger.com')
 
         server = None
         last_err = None
@@ -226,19 +224,15 @@ def send_email_task(self, email_log_id):
         
     except Exception as e:
         error_msg = str(e)
+        if '530' in error_msg or 'Authentication Required' in error_msg or '5.7.0' in error_msg:
+            error_msg = "Gmail SMTP Auth Error: Invalid App Password (530 5.7.0 Authentication Required). Please update your App Password in Settings & SMTP."
+
+        is_non_transient = isinstance(e, (smtplib.SMTPRecipientsRefused, smtplib.SMTPAuthenticationError, TypeError)) or '530' in str(e)
         
-        # Retry logic (up to 3 times)
-        if log.retry_count < 3:
-            log.retry_count += 1
-            log.error_message = f"Attempt {log.retry_count} failed: {error_msg}"
-            log.save()
-            
-            # Retry task in 60 seconds
-            self.retry(exc=e, countdown=60)
-        else:
-            # Mark as failed
+        # Immediate fail for non-transient errors or after max retries
+        if is_non_transient or log.retry_count >= 3:
             log.status = 'FAILED'
-            log.error_message = f"Failed after 3 retries: {error_msg}"
+            log.error_message = error_msg
             log.save()
             
             if log.campaign:
@@ -248,9 +242,18 @@ def send_email_task(self, email_log_id):
                     campaign.save()
                     check_campaign_completion(campaign.id)
             
-            # Log action
-            ActivityLog.objects.create(user=user, action=f"Failed sending email to {log.recipient} after retries")
-            return f"Failed sending to {log.recipient}"
+            ActivityLog.objects.create(user=user, action=f"Failed sending email to {log.recipient}: {error_msg}")
+            return f"Failed sending to {log.recipient}: {error_msg}"
+        else:
+            log.retry_count += 1
+            log.error_message = f"Attempt {log.retry_count} failed: {error_msg}"
+            log.save()
+            try:
+                self.retry(exc=e, countdown=60)
+            except Exception:
+                log.status = 'FAILED'
+                log.save()
+                return f"Failed sending to {log.recipient}: {error_msg}"
 
 def check_campaign_completion(campaign_id):
     # Retrieve campaign

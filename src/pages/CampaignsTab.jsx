@@ -2,19 +2,17 @@ import { useState, useEffect, useRef } from 'react';
 import { Mail, Clock, CheckCircle2, AlertTriangle, Loader2, Trash2, RefreshCw, MessageSquare, AlertOctagon, CornerUpLeft, Eye } from 'lucide-react';
 import * as api from '../utils/api';
 import imgTracker from '../assets/snippet-tracker.jpg';
+import CampaignDetailPage from './CampaignDetailPage';
 
-export default function CampaignsTab() {
+export default function CampaignsTab({ onNavigateToInbox }) {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [syncingInbox, setSyncingInbox] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
   
-  // Selected Campaign Inbound Replies View
+  // Selected Campaign Details & Telemetry View
   const [selectedCampaign, setSelectedCampaign] = useState(null);
-  const [inboundReplies, setInboundReplies] = useState([]);
-  const [loadingReplies, setLoadingReplies] = useState(false);
-  const [activeReplyFilter, setActiveReplyFilter] = useState('ALL');
 
   const pollIntervalRef = useRef(null);
 
@@ -34,22 +32,13 @@ export default function CampaignsTab() {
     fetchCampaigns();
 
     pollIntervalRef.current = setInterval(async () => {
-      let hasProcessing = false;
-      
-      setCampaigns(prev => {
-        hasProcessing = prev.some(c => c.status === 'Processing');
-        return prev;
-      });
-
-      if (hasProcessing) {
-        try {
-          const freshCampaigns = await api.fetchCampaigns();
-          setCampaigns(freshCampaigns);
-        } catch (e) {
-          console.error('Failed to poll campaigns:', e);
-        }
+      try {
+        const freshCampaigns = await api.fetchCampaigns();
+        setCampaigns(freshCampaigns);
+      } catch (e) {
+        console.error('Failed to poll campaigns:', e);
       }
-    }, 4000);
+    }, 5000);
 
     return () => {
       if (pollIntervalRef.current) {
@@ -78,17 +67,9 @@ export default function CampaignsTab() {
     }
   };
 
-  const handleOpenReplies = async (campaign) => {
+  const handleOpenReplies = (campaign) => {
     setSelectedCampaign(campaign);
-    setLoadingReplies(true);
-    try {
-      const res = await api.fetchInboundEmails({ campaign: campaign.id });
-      setInboundReplies(res.results || res);
-    } catch (err) {
-      console.error('Failed to load campaign replies:', err);
-    } finally {
-      setLoadingReplies(false);
-    }
+    window.history.pushState({}, '', `/campaigns/${campaign.id}`);
   };
 
   const handleDelete = async (id) => {
@@ -129,10 +110,227 @@ export default function CampaignsTab() {
     );
   };
 
-  const filteredInboundReplies = inboundReplies.filter(r => {
-    if (activeReplyFilter === 'ALL') return true;
-    return r.classification === activeReplyFilter || r.sentiment === activeReplyFilter;
-  });
+  if (selectedCampaign) {
+    return (
+      <CampaignDetailPage 
+        campaignId={selectedCampaign.id} 
+        onBack={() => {
+          setSelectedCampaign(null);
+          window.history.pushState({}, '', '/dashboard');
+        }} 
+        onNavigateToInbox={onNavigateToInbox}
+      />
+    );
+  }
+
+        {/* Executive Scorecards (4 Cards) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+          <div className="p-5 rounded-2xl bg-white/[0.02] border border-border space-y-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground uppercase font-semibold">
+              <span>Target Leads</span>
+              <Mail className="size-4 text-cyan" />
+            </div>
+            <div className="text-2xl font-bold font-display text-foreground">{selectedCampaign.total_recipients}</div>
+            <p className="text-[11px] text-muted-foreground">100% Enqueued</p>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-lime/5 border border-lime/30 space-y-1">
+            <div className="flex items-center justify-between text-xs text-lime uppercase font-semibold">
+              <span>Delivery Rate</span>
+              <CheckCircle2 className="size-4 text-lime" />
+            </div>
+            <div className="text-2xl font-bold font-display text-lime">{delivRate}%</div>
+            <p className="text-[11px] text-muted-foreground">{selectedCampaign.successful_count} Dispatched Successfully</p>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-cyan/5 border border-cyan/30 space-y-1">
+            <div className="flex items-center justify-between text-xs text-cyan uppercase font-semibold">
+              <span>Lead Reply Ratio</span>
+              <MessageSquare className="size-4 text-cyan" />
+            </div>
+            <div className="text-2xl font-bold font-display text-cyan">{replyRate}%</div>
+            <p className="text-[11px] text-cyan font-semibold">{selectedCampaign.replied_count || 0} Inbound Replies Received</p>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-rose/5 border border-rose/30 space-y-1">
+            <div className="flex items-center justify-between text-xs text-rose uppercase font-semibold">
+              <span>Bounce Rate</span>
+              <AlertTriangle className="size-4 text-rose" />
+            </div>
+            <div className="text-2xl font-bold font-display text-rose">{bounceRate}%</div>
+            <p className="text-[11px] text-rose font-semibold">{selectedCampaign.bounced_count || 0} Delivery Bounces</p>
+          </div>
+        </div>
+
+        {/* Delivery Progress & Funnel Monitor */}
+        <div className="p-6 rounded-3xl glass border border-border space-y-3 font-mono">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-foreground uppercase tracking-wider">Campaign Dispatch & Deliverability Funnel</span>
+            <span className="text-cyan font-semibold">{selectedCampaign.successful_count} / {selectedCampaign.total_recipients} Dispatched</span>
+          </div>
+          <div className="w-full h-3 rounded-full bg-white/10 overflow-hidden flex">
+            <div className="h-full bg-lime transition-all duration-500" style={{ width: `${delivRate}%` }} />
+            <div className="h-full bg-rose transition-all duration-500" style={{ width: `${bounceRate}%` }} />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 flex-wrap gap-2">
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-lime" /> Delivered ({selectedCampaign.successful_count})</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose" /> Bounced ({selectedCampaign.bounced_count || 0})</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-cyan" /> Replies ({selectedCampaign.replied_count || 0})</span>
+          </div>
+        </div>
+
+        {/* Multi-Tab Telemetry Inspector */}
+        <div className="space-y-4">
+          <div className="flex border-b border-border text-xs font-mono gap-2">
+            <button
+              onClick={() => setActiveModalTab('RECIPIENTS')}
+              className={`px-5 py-3 font-bold border-b-2 transition-colors cursor-pointer text-sm ${
+                activeModalTab === 'RECIPIENTS'
+                  ? 'border-cyan text-cyan bg-cyan/10 rounded-t-xl'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              📋 Target Recipients & Audit Logs ({campaignLogs.length})
+            </button>
+            <button
+              onClick={() => setActiveModalTab('REPLIES')}
+              className={`px-5 py-3 font-bold border-b-2 transition-colors cursor-pointer text-sm ${
+                activeModalTab === 'REPLIES'
+                  ? 'border-cyan text-cyan bg-cyan/10 rounded-t-xl'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              💬 Inbound Lead Threads ({inboundReplies.length})
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {loadingReplies ? (
+            <div className="py-24 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="size-8 text-cyan animate-spin" />
+              <p className="text-xs text-muted-foreground font-mono">Fetching campaign telemetry & bounce audit logs...</p>
+            </div>
+          ) : activeModalTab === 'RECIPIENTS' ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <input
+                  type="text"
+                  placeholder="Search recipient email, subject, or error code..."
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  className="px-4 py-2 rounded-xl bg-white/5 border border-border text-xs focus:outline-none focus:border-cyan font-mono w-full max-w-md"
+                />
+                <span className="text-xs font-mono text-muted-foreground">Showing {filteredLogs.length} logs</span>
+              </div>
+
+              {filteredLogs.length > 0 ? (
+                <div className="space-y-3">
+                  {filteredLogs.map(log => (
+                    <div key={log.id} className="p-4 rounded-2xl bg-white/[0.02] border border-border space-y-2 text-xs font-mono hover:border-cyan/30 transition">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-foreground text-sm">{log.recipient_name || log.recipient}</span>
+                          <span className="text-muted-foreground">&lt;{log.recipient}&gt;</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${
+                            log.status === 'SENT' ? 'bg-lime/20 text-lime border border-lime/30' :
+                            log.status === 'FAILED' ? 'bg-rose/20 text-rose border border-rose/30' : 'bg-amber/20 text-amber'
+                          }`}>
+                            {log.status}
+                          </span>
+                          {log.reply_status !== 'NO_REPLY' && (
+                            <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${
+                              log.reply_status === 'REPLIED' ? 'bg-cyan/20 text-cyan border border-cyan/30' :
+                              log.reply_status === 'BOUNCED' ? 'bg-rose/20 text-rose border border-rose/30' : 'bg-amber/20 text-amber'
+                            }`}>
+                              {log.reply_status}
+                            </span>
+                          )}
+                          <span className="text-muted-foreground text-xs">
+                            {log.sent_at ? new Date(log.sent_at).toLocaleString() : 'Pending'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-muted-foreground text-xs">
+                        Subject: <span className="text-foreground font-semibold">{log.subject}</span>
+                      </div>
+
+                      {log.error_message && (
+                        <div className="p-3 rounded-xl bg-rose/10 border border-rose/30 text-xs text-rose space-y-1">
+                          <p className="font-bold flex items-center gap-1.5">
+                            <AlertOctagon className="size-3.5" /> Bounce / Delivery Diagnostic Error:
+                          </p>
+                          <p className="leading-relaxed font-sans">{log.error_message}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center text-xs text-muted-foreground font-mono">
+                  No recipient logs found matching "{logSearchQuery}".
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Inbound Replies Tab */
+            <div className="space-y-4">
+              <div className="flex gap-2 flex-wrap text-xs font-mono">
+                {['ALL', 'HUMAN_REPLY', 'BOUNCE'].map(filterKey => (
+                  <button
+                    key={filterKey}
+                    onClick={() => setActiveReplyFilter(filterKey)}
+                    className={`px-3.5 py-1.5 rounded-xl border transition-colors cursor-pointer text-xs ${
+                      activeReplyFilter === filterKey 
+                        ? 'bg-cyan/20 border-cyan text-cyan font-bold' 
+                        : 'bg-white/5 border-border text-muted-foreground hover:bg-white/10'
+                    }`}
+                  >
+                    {filterKey === 'ALL' ? 'All Replies' : filterKey}
+                  </button>
+                ))}
+              </div>
+
+              {filteredInboundReplies.length > 0 ? (
+                filteredInboundReplies.map((reply) => (
+                  <div key={reply.id} className="p-5 rounded-2xl bg-white/[0.02] border border-border space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-xs font-mono">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-foreground text-sm">{reply.sender_name || reply.sender_email}</span>
+                        <span className="text-muted-foreground">&lt;{reply.sender_email}&gt;</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${
+                          reply.classification === 'HUMAN_REPLY' ? 'bg-lime/20 text-lime border border-lime/30' :
+                          reply.classification === 'BOUNCE' ? 'bg-rose/20 text-rose border border-rose/30' : 'bg-amber/20 text-amber'
+                        }`}>
+                          {reply.classification}
+                        </span>
+                        <span className="text-muted-foreground">{new Date(reply.received_at || reply.processed_at).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-xs font-mono text-cyan">Subject: {reply.subject}</div>
+
+                    {/* Reply Body */}
+                    <div className="p-4 rounded-2xl bg-cyan/5 border-2 border-cyan/40 text-foreground text-sm font-semibold leading-relaxed whitespace-pre-wrap">
+                      {reply.body_text || 'HTML Content (Sanitized)'}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-16 text-center text-xs text-muted-foreground font-mono">
+                  No incoming email replies matching filter "{activeReplyFilter}".
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -211,21 +409,23 @@ export default function CampaignsTab() {
       {campaigns.length > 0 ? (
         <div className="grid grid-cols-1 gap-6">
           {campaigns.map((c) => {
+            const total = c.total_recipients || 1;
             const completedCount = c.successful_count + c.failed_count;
-            const progressPct = c.total_recipients > 0 
-              ? Math.round((completedCount / c.total_recipients) * 100) 
-              : 0;
-
-            const replyRatePct = c.successful_count > 0
-              ? Math.round(((c.replied_count || 0) / c.successful_count) * 100)
-              : 0;
+            const progressPct = Math.round((completedCount / total) * 100);
+            
+            const deliveryRatePct = Math.round((c.successful_count / total) * 100);
+            const replyRatePct = Math.round(((c.replied_count || 0) / total) * 100);
+            const bounceRatePct = Math.round(((c.bounced_count || 0) / total) * 100);
 
             return (
               <div key={c.id} className="rounded-3xl glass border border-border p-6 space-y-4 hover:border-cyan/35 transition animate-fade-in">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
-                  <div className="space-y-1">
-                    <h3 className="font-display font-semibold text-lg">{c.name}</h3>
+                  <div className="space-y-1 cursor-pointer" onClick={() => handleOpenReplies(c)}>
+                    <h3 className="font-display font-semibold text-lg hover:text-cyan transition-colors flex items-center gap-2">
+                      <span>{c.name}</span>
+                      <span className="text-xs font-mono text-cyan underline font-normal">(Click to open Observability Console)</span>
+                    </h3>
                     <p className="text-xs text-muted-foreground font-mono">
                       ID: {c.id} · Type: <span className="text-cyan font-bold">{c.campaign_type}</span> · Created: {new Date(c.created_at).toLocaleString()}
                     </p>
@@ -234,10 +434,10 @@ export default function CampaignsTab() {
                     {getStatusPill(c.status)}
                     <button
                       onClick={() => handleOpenReplies(c)}
-                      className="px-3 py-1.5 rounded-xl bg-cyan/10 border border-cyan/30 text-cyan text-xs font-semibold hover:bg-cyan/20 cursor-pointer transition-colors flex items-center gap-1.5"
+                      className="px-3.5 py-1.5 rounded-xl bg-cyan/15 border border-cyan/40 text-cyan text-xs font-bold hover:bg-cyan/25 cursor-pointer transition-colors flex items-center gap-2"
                     >
-                      <MessageSquare className="size-3.5" />
-                      <span>View Replies ({c.replied_count || 0})</span>
+                      <Eye className="size-3.5" />
+                      <span>Details & Telemetry</span>
                     </button>
                     <button
                       onClick={() => handleDelete(c.id)}
@@ -255,8 +455,8 @@ export default function CampaignsTab() {
                     <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wider">Recipients</p>
                     <p className="text-lg font-bold mt-1">{c.total_recipients}</p>
                   </div>
-                  <div className="rounded-2xl border border-border bg-white/[0.01] p-3 text-center">
-                    <p className="text-lime text-[10px] font-semibold uppercase tracking-wider">Delivered</p>
+                  <div className="rounded-2xl border border-lime/30 bg-lime/5 p-3 text-center">
+                    <p className="text-lime text-[10px] font-semibold uppercase tracking-wider">Delivered ({deliveryRatePct}%)</p>
                     <p className="text-lg font-bold mt-1 text-lime">{c.successful_count}</p>
                   </div>
                   <div className="rounded-2xl border border-cyan/30 bg-cyan/5 p-3 text-center">
@@ -264,7 +464,7 @@ export default function CampaignsTab() {
                     <p className="text-lg font-bold mt-1 text-cyan">{c.replied_count || 0}</p>
                   </div>
                   <div className="rounded-2xl border border-rose/30 bg-rose/5 p-3 text-center">
-                    <p className="text-rose text-[10px] font-semibold uppercase tracking-wider">Bounced</p>
+                    <p className="text-rose text-[10px] font-semibold uppercase tracking-wider">Bounced ({bounceRatePct}%)</p>
                     <p className="text-lg font-bold mt-1 text-rose">{c.bounced_count || 0}</p>
                   </div>
                   <div className="rounded-2xl border border-amber/30 bg-amber/5 p-3 text-center col-span-2 sm:col-span-1">
@@ -276,16 +476,19 @@ export default function CampaignsTab() {
                 {/* Progress Tracks */}
                 <div className="space-y-2">
                   <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-muted-foreground">Sending Progress</span>
+                    <span className="text-muted-foreground">Dispatch Progress</span>
                     <span className="font-bold">{progressPct}% ({completedCount} / {c.total_recipients})</span>
                   </div>
-                  <div className="h-2 rounded-full bg-white/5 overflow-hidden border border-border">
+                  <div className="h-2.5 rounded-full bg-white/5 overflow-hidden border border-border flex">
                     <div 
-                      className="h-full rounded-full bg-gradient-to-r from-lime to-cyan transition-all duration-500"
-                      style={{ 
-                        width: `${progressPct}%`,
-                        background: c.status === 'Failed' ? 'var(--rose)' : undefined 
-                      }}
+                      className="h-full bg-lime transition-all duration-500" 
+                      style={{ width: `${Math.min(100, Math.round((c.successful_count / total) * 100))}%` }} 
+                      title="Successful Sends"
+                    />
+                    <div 
+                      className="h-full bg-rose transition-all duration-500" 
+                      style={{ width: `${Math.min(100, Math.round((c.failed_count / total) * 100))}%` }} 
+                      title="Bounces / Failures"
                     />
                   </div>
                 </div>
@@ -299,99 +502,8 @@ export default function CampaignsTab() {
           <p className="text-muted-foreground/60 text-xs">Deploy a batch email campaign or send a quick email, and the tracking console will display live statistics here.</p>
         </div>
       )}
-
-      {/* Inbound Replies Modal Drawer */}
-      {selectedCampaign && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl max-h-[85vh] rounded-3xl glass border border-border p-6 flex flex-col gap-4 overflow-hidden shadow-2xl animate-fade-in">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-border pb-4">
-              <div>
-                <h3 className="text-xl font-display font-bold">Replies for "{selectedCampaign.name}"</h3>
-                <p className="text-xs text-muted-foreground font-mono">
-                  IMAP Synced Threads · Total Captured: {inboundReplies.length}
-                </p>
-              </div>
-              <button 
-                onClick={() => setSelectedCampaign(null)}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-xs cursor-pointer"
-              >
-                ✕ Close
-              </button>
-            </div>
-
-            {/* Filter Tabs */}
-            <div className="flex gap-2 flex-wrap text-xs font-mono">
-              {['ALL', 'HUMAN_REPLY', 'INTERESTED', 'NOT_INTERESTED', 'UNSUBSCRIBE', 'AUTO_REPLY', 'BOUNCE'].map(filterKey => (
-                <button
-                  key={filterKey}
-                  onClick={() => setActiveReplyFilter(filterKey)}
-                  className={`px-3 py-1.5 rounded-xl border transition-colors cursor-pointer ${
-                    activeReplyFilter === filterKey 
-                      ? 'bg-cyan/20 border-cyan text-cyan font-bold' 
-                      : 'bg-white/5 border-border text-muted-foreground hover:bg-white/10'
-                  }`}
-                >
-                  {filterKey}
-                </button>
-              ))}
-            </div>
-
-            {/* Content List */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-              {loadingReplies ? (
-                <div className="py-20 flex flex-col items-center justify-center gap-2">
-                  <Loader2 className="size-8 text-cyan animate-spin" />
-                  <p className="text-xs text-muted-foreground font-mono">Fetching campaign email threads...</p>
-                </div>
-              ) : filteredInboundReplies.length > 0 ? (
-                filteredInboundReplies.map((reply) => (
-                  <div key={reply.id} className="p-4 rounded-2xl bg-white/[0.02] border border-border space-y-3">
-                    <div className="flex items-center justify-between flex-wrap gap-2 text-xs font-mono">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-foreground">{reply.sender_name || reply.sender_email}</span>
-                        <span className="text-muted-foreground">&lt;{reply.sender_email}&gt;</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          reply.classification === 'HUMAN_REPLY' ? 'bg-lime/20 text-lime' :
-                          reply.classification === 'BOUNCE' ? 'bg-rose/20 text-rose' : 'bg-amber/20 text-amber'
-                        }`}>
-                          {reply.classification}
-                        </span>
-                        {reply.sentiment !== 'UNKNOWN' && (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-cyan/20 text-cyan font-bold">
-                            {reply.sentiment}
-                          </span>
-                        )}
-                        <span className="text-muted-foreground">{new Date(reply.received_at || reply.processed_at).toLocaleString()}</span>
-                      </div>
-                    </div>
-
-                    <p className="text-xs font-semibold text-foreground/90 font-mono">Subject: {reply.subject}</p>
-                    
-                    <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-xs text-muted-foreground font-sans leading-relaxed whitespace-pre-wrap">
-                      {reply.body_text || (reply.body_html ? 'HTML Content (Sanitized)' : 'No message body.')}
-                    </div>
-
-                    {reply.bounce_detail && (
-                      <div className="p-2.5 rounded-xl bg-rose/10 border border-rose/30 text-[11px] font-mono text-rose space-y-1">
-                        <p className="font-bold">Bounce Detail ({reply.bounce_detail.bounce_type}):</p>
-                        <p>{reply.bounce_detail.diagnostic_code || 'SMTP failure code ' + reply.bounce_detail.smtp_status_code}</p>
-                      </div>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <div className="py-16 text-center text-xs text-muted-foreground font-mono">
-                  No incoming email replies matching filter "{activeReplyFilter}".
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
 

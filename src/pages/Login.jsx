@@ -91,24 +91,44 @@ export default function Login({ onBackToHome }) {
       <div className="absolute top-0 right-0 w-[450px] h-[450px] rounded-full bg-lime/10 opacity-30 blur-[120px] pointer-events-none animate-pulse translate-x-1/4 -translate-y-1/4" />
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] rounded-full bg-cyan/10 opacity-25 blur-[150px] pointer-events-none -translate-x-1/4 translate-y-1/4" />
 
-      {/* Navigation Options */}
-      <div className="absolute top-6 right-6 z-50 flex items-center gap-2">
-        {onBackToHome && (
-          <button
-            onClick={onBackToHome}
-            className="text-xs font-bold px-3 py-2 rounded-xl bg-white/5 border border-border hover:bg-white/10 transition duration-300 text-muted-foreground hover:text-foreground cursor-pointer"
-          >
-            ← Home
-          </button>
-        )}
-        <button
-          onClick={toggle}
-          aria-label="Toggle theme"
-          className="p-2 rounded-xl bg-white/5 border border-border hover:bg-white/10 transition cursor-pointer text-muted-foreground hover:text-foreground"
-        >
-          {isDark ? <Sun className="size-4 text-amber-400" /> : <Moon className="size-4 text-indigo-400" />}
-        </button>
-      </div>
+      {/* Full Top Navigation Bar */}
+      <header className="w-full border-b border-border bg-background/70 backdrop-blur-xl z-50 transition-all duration-300">
+        <div className="max-w-7xl mx-auto px-6 h-18 flex items-center justify-between">
+          {/* Logo & Brand */}
+          <div className="flex items-center gap-3 cursor-pointer" onClick={onBackToHome || (() => window.location.href = '/')}>
+            <div className="size-10 rounded-xl bg-gradient-to-br from-lime to-cyan flex items-center justify-center shadow-lg shadow-lime/20">
+              <Mail className="size-5 text-zinc-950 font-bold" />
+            </div>
+            <div>
+              <span className="font-display font-extrabold text-xl tracking-tight bg-gradient-to-r from-lime via-cyan to-lime bg-clip-text text-transparent">
+                MailFlow
+              </span>
+              <span className="text-[9px] ml-1.5 px-2 py-0.5 rounded bg-cyan/15 border border-cyan/20 text-cyan font-mono font-bold uppercase tracking-wider">
+                SaaS Console
+              </span>
+            </div>
+          </div>
+
+          {/* Right Action Controls */}
+          <div className="flex items-center gap-3">
+            {onBackToHome && (
+              <button
+                onClick={onBackToHome}
+                className="text-xs font-bold px-4 py-2 rounded-xl bg-white/5 border border-border hover:bg-white/10 transition-all duration-300 text-foreground hover:border-cyan/40 cursor-pointer flex items-center gap-2"
+              >
+                <span>← Back to Home</span>
+              </button>
+            )}
+            <button
+              onClick={toggle}
+              aria-label="Toggle theme"
+              className="p-2.5 rounded-xl bg-white/5 border border-border hover:bg-white/10 transition cursor-pointer text-muted-foreground hover:text-foreground"
+            >
+              {isDark ? <Sun className="size-4 text-amber-400" /> : <Moon className="size-4 text-indigo-400" />}
+            </button>
+          </div>
+        </div>
+      </header>
 
       {/* Main viewport */}
       <div className="flex-1 flex items-center justify-center p-6 z-10">

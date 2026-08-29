@@ -174,10 +174,7 @@ SIMPLE_JWT = {
 }
 
 # Encryption Key Configuration (Fernet Key)
-ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
-if not ENCRYPTION_KEY:
-    from cryptography.fernet import Fernet
-    ENCRYPTION_KEY = Fernet.generate_key().decode()
+ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', '4cLxtLOp6hzP_iT_GzITEWPW9YxfRFwSlgtfNpA-fQ4=')
 
 # Celery Broker & Task Settings
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')

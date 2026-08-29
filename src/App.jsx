@@ -48,7 +48,7 @@ function AppContent() {
   }
 
   // Render subpage views based on browser url pathnames
-  if (currentPath === '/dashboard') {
+  if (currentPath === '/dashboard' || currentPath.startsWith('/campaigns/')) {
     return (
       <ProtectedRoute>
         <Dashboard />

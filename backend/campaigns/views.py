@@ -54,8 +54,23 @@ class GlobalSuppressionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return GlobalSuppressionList.objects.filter(user=self.request.user).order_by('-added_at')
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        email = request.data.get('email', '').strip()
+        reason = request.data.get('reason', 'Manually suppressed')
+        if not email:
+            return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        obj, created = GlobalSuppressionList.objects.get_or_create(
+            user=request.user,
+            email=email.lower(),
+            defaults={'reason': reason}
+        )
+        if not created and reason:
+            obj.reason = reason
+            obj.save()
+
+        serializer = self.get_serializer(obj)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 class ManualInboxSyncView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
@@ -77,6 +92,55 @@ class ManualInboxSyncView(APIView):
             return Response({"error": "SMTP/IMAP settings not configured for this user."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({"error": f"IMAP sync notice: {str(e)}"}, status=status.HTTP_200_OK)
+
+
+class PurgeSocialEmailsView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def post(self, request):
+        user = request.user
+        deleted_count, _ = InboundEmail.objects.filter(
+            user=user
+        ).filter(
+            Q(sender_email__icontains='facebook') |
+            Q(sender_email__icontains='linkedin') |
+            Q(sender_email__icontains='twitter') |
+            Q(sender_email__icontains='youtube') |
+            Q(sender_email__icontains='github') |
+            Q(sender_email__icontains='google.com') |
+            Q(sender_email__icontains='indeed.com') |
+            Q(sender_email__icontains='groq.co') |
+            Q(sender_email__icontains='clickup.com') |
+            Q(sender_email__icontains='amazon.com') |
+            Q(sender_email__icontains='codecademy.com') |
+            Q(sender_email__icontains='abl.com') |
+            Q(sender_email__icontains='snov.io') |
+            Q(sender_email__icontains='blueticks.co') |
+            Q(sender_email__icontains='hbl.com') |
+            Q(sender_email__icontains='binance.com') |
+            Q(sender_email__icontains='snapchat.com') |
+            Q(sender_email__icontains='foodpanda.pk') |
+            Q(sender_email__icontains='telenorbank.pk') |
+            Q(sender_email__icontains='ubl.com.pk') |
+            Q(sender_email__icontains='apollo.io') |
+            Q(sender_email__icontains='moodle.org') |
+            Q(sender_email__icontains='oracle.com') |
+            Q(sender_email__icontains='hubspot.com') |
+            Q(sender_email__icontains='bayt.com') |
+            Q(sender_email__icontains='ipinfo.io') |
+            Q(sender_email__icontains='jobscan.co') |
+            Q(sender_email__startswith='no-reply@') |
+            Q(sender_email__startswith='noreply@') |
+            Q(sender_email__startswith='donotreply@') |
+            Q(sender_email__startswith='do_not_reply@') |
+            Q(sender_email__startswith='andy-noreply@') |
+            Q(sender_email__startswith='securityalerts@') |
+            Q(subject__icontains='facebook')
+        ).delete()
+        return Response({
+            "status": "SUCCESS",
+            "message": f"Successfully purged {deleted_count} social/automated notifications from Unibox."
+        }, status=status.HTTP_200_OK)
 
 
 class EmailTemplateViewSet(viewsets.ModelViewSet):
@@ -315,19 +379,33 @@ class DashboardStatsView(APIView):
         
         total_sent = EmailLog.objects.filter(user=user, status='SENT').count()
         total_failed = EmailLog.objects.filter(user=user, status='FAILED').count()
-        total_replied = InboundEmail.objects.filter(user=user, classification='HUMAN_REPLY').count()
-        total_bounced = InboundEmail.objects.filter(user=user, classification='BOUNCE').count()
+        
+        # Robust Q query matching user directly, via EmailLog, or unassigned IMAP records
+        inbound_replies = InboundEmail.objects.filter(
+            Q(user=user) | Q(email_log__user=user) | Q(user=None),
+            classification='HUMAN_REPLY'
+        ).count()
+        log_replies = EmailLog.objects.filter(user=user, reply_status='REPLIED').count()
+        total_replied = max(inbound_replies, log_replies)
+
+        inbound_bounces = InboundEmail.objects.filter(
+            Q(user=user) | Q(email_log__user=user) | Q(user=None),
+            classification='BOUNCE'
+        ).count()
+        log_bounces = EmailLog.objects.filter(user=user, reply_status='BOUNCED').count()
+        total_bounced = max(inbound_bounces, log_bounces)
+
         total_campaigns = Campaign.objects.filter(user=user).count()
         total_templates = EmailTemplate.objects.filter(user=user).count()
 
-        success_rate = 0
+        success_rate = 100.0
         total_deliveries = total_sent + total_failed
         if total_deliveries > 0:
             success_rate = round((total_sent / total_deliveries) * 100, 1)
 
-        reply_rate = 0
+        reply_rate = 0.0
         if total_sent > 0:
-            reply_rate = round((total_replied / total_sent) * 100, 1)
+            reply_rate = min(100.0, round((total_replied / max(1, total_sent)) * 100, 1))
 
         return Response({
             "emails_sent": total_sent,
@@ -346,80 +424,73 @@ class DashboardChartsView(APIView):
     def get(self, request):
         user = request.user
         
-        # 1. Daily Sends - Last 30 Days
+        # 1. Daily Sends & Failures - Last 30 Days
         start_date = timezone.now() - timedelta(days=30)
-        daily_logs = EmailLog.objects.filter(
-            user=user, 
-            status='SENT', 
-            sent_at__gte=start_date
-        ).annotate(
-            day=TruncDay('sent_at')
-        ).values('day').annotate(
-            count=Count('id')
-        ).order_by('day')
-
-        daily_sends = []
-        # Prepopulate last 30 days to avoid gaps
-        day_map = { (timezone.now() - timedelta(days=i)).date().strftime('%b %d'): 0 for i in range(30) }
         
-        for log in daily_logs:
+        day_map = {}
+        for i in range(30):
+            d_str = (timezone.now() - timedelta(days=i)).date().strftime('%b %d')
+            day_map[d_str] = {"sent": 0, "failed": 0}
+
+        sent_logs = EmailLog.objects.filter(
+            user=user, status='SENT', sent_at__gte=start_date
+        ).annotate(day=TruncDay('sent_at')).values('day').annotate(count=Count('id'))
+
+        for log in sent_logs:
             if log['day']:
-                day_str = log['day'].date().strftime('%b %d')
-                day_map[day_str] = log['count']
-        
-        # Format as list sorted chronologically
-        daily_sends = [{"date": k, "count": v} for k, v in reversed(list(day_map.items()))]
+                d_str = log['day'].date().strftime('%b %d')
+                if d_str in day_map:
+                    day_map[d_str]['sent'] = log['count']
 
-        # 2. Delivery Status Partition
-        status_counts = EmailLog.objects.filter(user=user).values('status').annotate(count=Count('id'))
+        failed_logs = EmailLog.objects.filter(
+            user=user, status='FAILED', sent_at__gte=start_date
+        ).annotate(day=TruncDay('sent_at')).values('day').annotate(count=Count('id'))
+
+        for log in failed_logs:
+            if log['day']:
+                d_str = log['day'].date().strftime('%b %d')
+                if d_str in day_map:
+                    day_map[d_str]['failed'] = log['count']
+
+        daily_sends = [
+            {"date": k, "count": v["sent"], "sent": v["sent"], "failed": v["failed"]}
+            for k, v in reversed(list(day_map.items()))
+        ]
+
+        # 2. Delivery Status Partition Breakdown
+        sent_count = EmailLog.objects.filter(user=user, status='SENT').count()
+        bounced_count = InboundEmail.objects.filter(
+            Q(user=user) | Q(email_log__user=user) | Q(user=None),
+            classification='BOUNCE'
+        ).count()
+        replied_count = InboundEmail.objects.filter(
+            Q(user=user) | Q(email_log__user=user) | Q(user=None),
+            classification='HUMAN_REPLY'
+        ).count()
+
         delivery_status = [
-            {"name": "Sent", "value": 0, "color": "#10b981"},
-            {"name": "Failed", "value": 0, "color": "#ef4444"},
-            {"name": "Pending", "value": 0, "color": "#3b82f6"}
+            {"name": "Delivered", "value": sent_count, "color": "#10b981"},
+            {"name": "Bounced", "value": bounced_count, "color": "#f43f5e"},
+            {"name": "Lead Replies", "value": replied_count, "color": "#06b6d4"}
         ]
-        
-        for stat in status_counts:
-            val = stat['status']
-            count = stat['count']
-            if val == 'SENT':
-                delivery_status[0]['value'] = count
-            elif val == 'FAILED':
-                delivery_status[1]['value'] = count
-            elif val == 'PENDING':
-                delivery_status[2]['value'] = count
 
-        # 3. Campaign Performance (Top 5 Campaigns by Volume)
-        campaigns_logs = Campaign.objects.filter(user=user).order_by('-created_at')[:5]
+        # 3. Campaign Performance (Top 5 Campaigns)
+        campaigns = Campaign.objects.filter(user=user).order_by('-created_at')[:5]
         campaign_performance = [
-            {"name": c.name[:15] + "...", "sent": c.successful_count, "failed": c.failed_count, "replied": c.replied_count}
-            for c in campaigns_logs
+            {
+                "name": c.name[:18] if len(c.name) > 18 else c.name,
+                "full_name": c.name,
+                "sent": c.successful_count,
+                "replied": c.replied_count,
+                "failed": c.bounced_count if c.bounced_count > 0 else c.failed_count
+            }
+            for c in campaigns
         ]
-
-        # 4. Monthly sends growth (Last 6 Months)
-        six_months_ago = timezone.now() - timedelta(days=180)
-        monthly_logs = EmailLog.objects.filter(
-            user=user, 
-            status='SENT', 
-            sent_at__gte=six_months_ago
-        ).annotate(
-            month=TruncMonth('sent_at')
-        ).values('month').annotate(
-            count=Count('id')
-        ).order_by('month')
-
-        monthly_growth = []
-        for log in monthly_logs:
-            if log['month']:
-                monthly_growth.append({
-                    "month": log['month'].strftime('%b %Y'),
-                    "count": log['count']
-                })
 
         return Response({
             "daily_sends": daily_sends,
             "delivery_status": delivery_status,
-            "campaign_performance": campaign_performance,
-            "monthly_growth": monthly_growth
+            "campaign_performance": campaign_performance
         })
 
 class EmailHistoryListView(APIView):
@@ -537,112 +608,6 @@ class CampaignStatusView(APIView):
             })
         except Campaign.DoesNotExist:
             return Response({"error": "Campaign not found."}, status=status.HTTP_404_NOT_FOUND)
-
-class DashboardStatsView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request):
-        user = request.user
-        
-        total_sent = EmailLog.objects.filter(user=user, status='SENT').count()
-        total_failed = EmailLog.objects.filter(user=user, status='FAILED').count()
-        total_campaigns = Campaign.objects.filter(user=user).count()
-        total_templates = EmailTemplate.objects.filter(user=user).count()
-
-        success_rate = 0
-        total_deliveries = total_sent + total_failed
-        if total_deliveries > 0:
-            success_rate = round((total_sent / total_deliveries) * 100, 1)
-
-        return Response({
-            "emails_sent": total_sent,
-            "emails_failed": total_failed,
-            "campaigns": total_campaigns,
-            "templates": total_templates,
-            "success_rate": success_rate
-        })
-
-class DashboardChartsView(APIView):
-    permission_classes = (permissions.IsAuthenticated,)
-
-    def get(self, request):
-        user = request.user
-        
-        # 1. Daily Sends - Last 30 Days
-        start_date = timezone.now() - timedelta(days=30)
-        daily_logs = EmailLog.objects.filter(
-            user=user, 
-            status='SENT', 
-            sent_at__gte=start_date
-        ).annotate(
-            day=TruncDay('sent_at')
-        ).values('day').annotate(
-            count=Count('id')
-        ).order_by('day')
-
-        daily_sends = []
-        # Prepopulate last 30 days to avoid gaps
-        day_map = { (timezone.now() - timedelta(days=i)).date().strftime('%b %d'): 0 for i in range(30) }
-        
-        for log in daily_logs:
-            if log['day']:
-                day_str = log['day'].date().strftime('%b %d')
-                day_map[day_str] = log['count']
-        
-        # Format as list sorted chronologically
-        daily_sends = [{"date": k, "count": v} for k, v in reversed(list(day_map.items()))]
-
-        # 2. Delivery Status Partition
-        status_counts = EmailLog.objects.filter(user=user).values('status').annotate(count=Count('id'))
-        delivery_status = [
-            {"name": "Sent", "value": 0, "color": "#10b981"},
-            {"name": "Failed", "value": 0, "color": "#ef4444"},
-            {"name": "Pending", "value": 0, "color": "#3b82f6"}
-        ]
-        
-        for stat in status_counts:
-            val = stat['status']
-            count = stat['count']
-            if val == 'SENT':
-                delivery_status[0]['value'] = count
-            elif val == 'FAILED':
-                delivery_status[1]['value'] = count
-            elif val == 'PENDING':
-                delivery_status[2]['value'] = count
-
-        # 3. Campaign Performance (Top 5 Campaigns by Volume)
-        campaigns_logs = Campaign.objects.filter(user=user).order_by('-created_at')[:5]
-        campaign_performance = [
-            {"name": c.name[:15] + "...", "sent": c.successful_count, "failed": c.failed_count}
-            for c in campaigns_logs
-        ]
-
-        # 4. Monthly sends growth (Last 6 Months)
-        six_months_ago = timezone.now() - timedelta(days=180)
-        monthly_logs = EmailLog.objects.filter(
-            user=user, 
-            status='SENT', 
-            sent_at__gte=six_months_ago
-        ).annotate(
-            month=TruncMonth('sent_at')
-        ).values('month').annotate(
-            count=Count('id')
-        ).order_by('month')
-
-        monthly_growth = []
-        for log in monthly_logs:
-            if log['month']:
-                monthly_growth.append({
-                    "month": log['month'].strftime('%b %Y'),
-                    "count": log['count']
-                })
-
-        return Response({
-            "daily_sends": daily_sends,
-            "delivery_status": delivery_status,
-            "campaign_performance": campaign_performance,
-            "monthly_growth": monthly_growth
-        })
 
 class EmailHistoryListView(APIView):
     permission_classes = (permissions.IsAuthenticated,)

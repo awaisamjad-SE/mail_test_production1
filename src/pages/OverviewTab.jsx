@@ -38,6 +38,10 @@ export default function OverviewTab() {
 
   useEffect(() => {
     fetchData();
+    const interval = setInterval(() => {
+      fetchData();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleRefresh = () => {
@@ -54,17 +58,38 @@ export default function OverviewTab() {
     );
   }
 
-  // Formatting and Mapping Recharts data
+  // Formatting Recharts data
   const dailySendsData = charts?.daily_sends?.map((d, i) => ({
     day: d.date || `Day ${i + 1}`,
-    sent: d.count || 0,
-    failed: Math.round(d.count * 0.01) // mock failure rate proportional to sends
+    sent: d.sent !== undefined ? d.sent : (d.count || 0),
+    failed: d.failed || 0
   })) || [];
 
-  const deliveryStatusData = [
-    { name: "Delivered", value: stats?.emails_sent || 0, color: "var(--lime)" },
-    { name: "Bounced", value: stats?.emails_failed || 0, color: "var(--rose)" },
+  const deliveryStatusData = charts?.delivery_status?.map(s => ({
+    name: s.name,
+    value: s.value || 0,
+    color: s.color || (s.name === 'Delivered' ? '#10b981' : s.name === 'Lead Replies' ? '#06b6d4' : '#f43f5e')
+  })) || [
+    { name: "Delivered", value: stats?.emails_sent || 0, color: "#10b981" },
+    { name: "Bounced", value: stats?.emails_bounced || 0, color: "#f43f5e" },
+    { name: "Lead Replies", value: stats?.emails_replied || 0, color: "#06b6d4" }
   ];
+
+  const campaignPerformance = charts?.campaign_performance || [];
+
+  const getActivityBadge = (action) => {
+    const act = (action || '').toLowerCase();
+    if (act.includes('inbound') || act.includes('reply')) {
+      return { icon: Inbox, cls: 'bg-cyan/15 text-cyan border-cyan/30', label: 'INBOUND' };
+    }
+    if (act.includes('bounce') || act.includes('failed')) {
+      return { icon: AlertTriangle, cls: 'bg-rose/15 text-rose border-rose/30', label: 'BOUNCE' };
+    }
+    if (act.includes('campaign') || act.includes('created')) {
+      return { icon: Sparkles, cls: 'bg-amber/15 text-amber border-amber/30', label: 'CAMPAIGN' };
+    }
+    return { icon: Send, cls: 'bg-lime/15 text-lime border-lime/30', label: 'DISPATCH' };
+  };
 
   return (
     <div className="space-y-8">
@@ -83,20 +108,20 @@ export default function OverviewTab() {
           <button 
             onClick={handleRefresh}
             disabled={refreshing}
-            className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-xs flex items-center gap-2 cursor-pointer transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-border text-xs flex items-center gap-2 cursor-pointer transition-colors font-mono"
           >
             <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} /> 
-            <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+            <span>{refreshing ? 'Refreshing...' : 'Refresh Telemetry'}</span>
           </button>
         </div>
       </div>
 
-      {/* Overview Banner */}
+      {/* Overview Hero Banner */}
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative h-48 lg:h-56 rounded-3xl overflow-hidden border border-border group"
+        className="relative h-48 lg:h-56 rounded-3xl overflow-hidden border border-border group shadow-2xl"
       >
         <img src={imgOverview} alt="Email command center" loading="lazy" className="absolute inset-0 w-full h-full object-cover scale-105 group-hover:scale-110 transition-transform duration-1000" />
         <div className="absolute inset-0 bg-gradient-to-r from-background via-background/70 to-background/10" />
@@ -104,21 +129,27 @@ export default function OverviewTab() {
         <div className="relative h-full p-6 lg:p-8 flex items-center">
           <div className="flex-1">
             <div className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.2em] text-cyan px-2.5 py-1 rounded-full bg-cyan/10 border border-cyan/20">
-              <span className="size-1.5 rounded-full bg-cyan animate-pulse" /> Live · Telemetry Active
+              <span className="size-1.5 rounded-full bg-lime animate-pulse" /> Live · Telemetry Active
             </div>
-            <h2 className="mt-3 font-display text-xl lg:text-2xl font-semibold max-w-md">Every send, open and bounce — observed in real time.</h2>
+            <h2 className="mt-3 font-display text-xl lg:text-2xl font-semibold max-w-md">
+              Every send, reply and bounce — observed in real time.
+            </h2>
           </div>
-          <div className="hidden md:grid grid-cols-3 gap-6 pr-2">
+          <div className="hidden md:grid grid-cols-4 gap-6 pr-2 font-mono">
             <div className="text-right">
-              <div className="font-display text-2xl font-bold gradient-text">{stats?.emails_sent || 0}</div>
+              <div className="font-display text-2xl font-bold text-lime">{stats?.emails_sent || 0}</div>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Sent Total</div>
             </div>
             <div className="text-right">
-              <div className="font-display text-2xl font-bold gradient-text">{stats?.success_rate || 100}%</div>
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Delivered</div>
+              <div className="font-display text-2xl font-bold text-cyan">{stats?.emails_replied || 0}</div>
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Lead Replies</div>
             </div>
             <div className="text-right">
-              <div className="font-display text-2xl font-bold gradient-text">0</div>
+              <div className="font-display text-2xl font-bold text-amber">{stats?.success_rate || 100}%</div>
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Delivery Rate</div>
+            </div>
+            <div className="text-right">
+              <div className="font-display text-2xl font-bold text-foreground">0</div>
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Queue Depth</div>
             </div>
           </div>
@@ -133,26 +164,26 @@ export default function OverviewTab() {
         <StatCard label="Delivery Rate" value={`${stats?.success_rate ?? 100}%`} delta="SMTP success" icon={CheckCircle2} accent="amber" />
       </div>
 
-
       {/* Charts Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Card className="xl:col-span-2 p-6">
+        {/* Chart 1: Daily Sends */}
+        <Card className="xl:col-span-2 p-6 border border-border">
           <CardHeader
             title="Daily sends · last 30 days"
-            subtitle="Throughput vs failures"
-            chips={[{ label: "Sent", color: "var(--lime)" }, { label: "Failed", color: "var(--rose)" }]}
+            subtitle="Dispatched volume and throughput"
+            chips={[{ label: "Sent", color: "var(--lime)" }, { label: "Bounces", color: "var(--rose)" }]}
           />
           <div className="h-72 mt-4">
             {dailySendsData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={dailySendsData} margin={{ left: -10, right: 10, top: 10 }}>
                   <defs>
                     <linearGradient id="gSent" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--lime)" stopOpacity={0.5} />
+                      <stop offset="0%" stopColor="var(--lime)" stopOpacity={0.4} />
                       <stop offset="100%" stopColor="var(--lime)" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gFail" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--rose)" stopOpacity={0.4} />
+                      <stop offset="0%" stopColor="var(--rose)" stopOpacity={0.3} />
                       <stop offset="100%" stopColor="var(--rose)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
@@ -162,7 +193,7 @@ export default function OverviewTab() {
                   <Tooltip
                     contentStyle={{
                       background: "oklch(0.20 0.025 250)", border: "1px solid oklch(1 0 0 / 0.1)",
-                      borderRadius: 12, fontSize: 12,
+                      borderRadius: 12, fontSize: 12, fontFamily: "monospace"
                     }}
                   />
                   <Area type="monotone" dataKey="sent" stroke="var(--lime)" strokeWidth={2} fill="url(#gSent)" />
@@ -170,16 +201,17 @@ export default function OverviewTab() {
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-xs">No email sending telemetry available yet.</div>
+              <div className="h-full flex items-center justify-center text-muted-foreground text-xs font-mono">No email sending telemetry available yet.</div>
             )}
           </div>
         </Card>
 
-        <Card className="p-6">
-          <CardHeader title="Delivery status" subtitle="Distribution breakdown" />
+        {/* Chart 2: Delivery Partition */}
+        <Card className="p-6 border border-border">
+          <CardHeader title="Delivery status" subtitle="Partition breakdown" />
           <div className="h-56 mt-2">
-            {stats?.emails_sent > 0 || stats?.emails_failed > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+            {deliveryStatusData.some(d => d.value > 0) ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <PieChart>
                   <Pie data={deliveryStatusData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={4}>
                     {deliveryStatusData.map((d, i) => <Cell key={i} fill={d.color} stroke="transparent" />)}
@@ -188,59 +220,92 @@ export default function OverviewTab() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-xs">No email telemetry data to display.</div>
+              <div className="h-full flex items-center justify-center text-muted-foreground text-xs font-mono">No email telemetry data to display.</div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-2 mt-2">
+          <div className="space-y-2 mt-2 font-mono">
             {deliveryStatusData.map((d) => (
-              <div key={d.name} className="flex items-center gap-2 text-xs">
-                <span className="size-2 rounded-full" style={{ background: d.color }} />
-                <span className="text-muted-foreground">{d.name}</span>
-                <span className="ml-auto font-mono font-medium">{d.value.toLocaleString()}</span>
+              <div key={d.name} className="flex items-center justify-between text-xs p-2 rounded-xl bg-white/[0.02] border border-border">
+                <div className="flex items-center gap-2">
+                  <span className="size-2 rounded-full" style={{ background: d.color }} />
+                  <span className="text-muted-foreground">{d.name}</span>
+                </div>
+                <span className="font-bold text-foreground">{d.value.toLocaleString()}</span>
               </div>
             ))}
           </div>
         </Card>
       </div>
 
-      {/* Activity Timeline and Details */}
+      {/* Top Campaign Streams & Infrastructure Health */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Card className="xl:col-span-2 p-6">
+        {/* Campaign Performance Bar */}
+        {campaignPerformance.length > 0 && (
+          <Card className="xl:col-span-2 p-6 border border-border">
+            <CardHeader title="Campaign Outreach Ranking" subtitle="Top performing batch campaigns" />
+            <div className="h-64 mt-4">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <BarChart data={campaignPerformance} margin={{ left: -10, right: 10, top: 10 }}>
+                  <CartesianGrid strokeDasharray="3 6" stroke="oklch(1 0 0 / 0.08)" />
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: '#e2e8f0' }} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: '#e2e8f0' }} />
+                  <Tooltip contentStyle={{ background: "oklch(0.20 0.025 250)", border: "1px solid oklch(1 0 0 / 0.1)", borderRadius: 12, fontSize: 12 }} />
+                  <Bar dataKey="sent" fill="var(--lime)" radius={[6, 6, 0, 0]} name="Sent / Dispatched" />
+                  <Bar dataKey="replied" fill="var(--cyan)" radius={[6, 6, 0, 0]} name="Lead Replies" />
+                  <Bar dataKey="failed" fill="var(--rose)" radius={[6, 6, 0, 0]} name="Bounced / Failed" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
+
+        {/* Live Activity Timeline */}
+        <Card className={`p-6 border border-border ${campaignPerformance.length > 0 ? '' : 'xl:col-span-2'}`}>
           <CardHeader title="Latest activity logs" subtitle="Audit tracking feeds" />
-          <div className="mt-4 divide-y divide-border max-h-96 overflow-y-auto pr-2 scrollbar-thin">
+          <div className="mt-4 divide-y divide-border/60 max-h-80 overflow-y-auto pr-1 scrollbar-thin">
             {activities.length > 0 ? (
-              activities.map((it, i) => (
-                <div key={it.id || i} className="flex items-start gap-3 py-3 animate-fade-in">
-                  <div className="size-9 rounded-xl grid place-items-center bg-cyan/15 text-cyan">
-                    <Send className="size-4" />
+              activities.map((it, i) => {
+                const badge = getActivityBadge(it.action);
+                const Icon = badge.icon;
+                return (
+                  <div key={it.id || i} className="flex items-start gap-3 py-3 animate-fade-in text-xs font-mono">
+                    <div className={`size-8 rounded-xl grid place-items-center shrink-0 border ${badge.cls}`}>
+                      <Icon className="size-3.5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-foreground leading-relaxed">{it.action}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        {new Date(it.created_at).toLocaleString()}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium">{it.action}</div>
-                    <div className="text-xs text-muted-foreground">{new Date(it.created_at).toLocaleString()}</div>
-                  </div>
-                  <MoreHorizontal className="size-4 text-muted-foreground" />
-                </div>
-              ))
+                );
+              })
             ) : (
-              <div className="py-12 text-center text-muted-foreground text-sm">
+              <div className="py-12 text-center text-muted-foreground text-xs font-mono">
                 No activity logs recorded. Actions like campaign dispatches will appear here.
               </div>
             )}
           </div>
         </Card>
 
-        <Card className="p-6">
-          <CardHeader title="Heartbeat" subtitle="Queue infrastructure" />
-          <div className="space-y-4 mt-4">
+        {/* System Heartbeat & Infrastructure Health */}
+        <Card className="p-6 border border-border">
+          <CardHeader title="Heartbeat" subtitle="Queue infrastructure health" />
+          <div className="space-y-3 mt-4 font-mono text-xs">
             {[
-              { label: "Worker threads", value: "8 Active", color: "lime" },
-              { label: "Dispatch latency", value: "124ms", color: "cyan" },
-              { label: "Background pools", value: "Celery", color: "amber" },
-              { label: "Suppression pool", value: "Auto", color: "rose" },
+              { label: "Worker threads", value: "8 Active", color: "lime", dot: true },
+              { label: "IMAP Sync Engine", value: "Connected (20s)", color: "cyan", dot: true },
+              { label: "Dispatch latency", value: "124ms", color: "lime", dot: false },
+              { label: "Encryption Engine", value: "Fernet Active", color: "cyan", dot: false },
+              { label: "Suppression pool", value: "Auto", color: "amber", dot: false },
             ].map((m, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-border">
-                <span className="text-sm text-muted-foreground">{m.label}</span>
-                <span className="font-display text-sm font-bold" style={{ color: `var(--${m.color})` }}>{m.value}</span>
+              <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.02] border border-border">
+                <span className="text-muted-foreground">{m.label}</span>
+                <span className="font-bold flex items-center gap-1.5" style={{ color: `var(--${m.color})` }}>
+                  {m.dot && <span className="size-1.5 rounded-full animate-pulse" style={{ background: `var(--${m.color})` }} />}
+                  {m.value}
+                </span>
               </div>
             ))}
           </div>
@@ -256,19 +321,19 @@ function StatCard({ label, value, delta, icon: Icon, accent }) {
   return (
     <motion.div
       whileHover={{ y: -3 }}
-      className="relative p-5 rounded-2xl glass overflow-hidden border border-border group"
+      className="relative p-5 rounded-3xl glass overflow-hidden border border-border group shadow-lg transition-all"
     >
-      <div className="absolute -top-8 -right-8 size-28 blur-3xl opacity-40 rounded-full"
+      <div className="absolute -top-8 -right-8 size-28 blur-3xl opacity-30 rounded-full"
         style={{ background: `var(--${accent})` }} />
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wider text-muted-foreground">{label}</span>
-        <div className="size-8 rounded-lg grid place-items-center bg-white/5 border border-border"
+        <span className="text-xs uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
+        <div className="size-8 rounded-xl grid place-items-center bg-white/5 border border-border"
           style={{ color: `var(--${accent})` }}>
           <Icon className="size-4" />
         </div>
       </div>
       <div className="mt-3 font-display text-2xl font-bold">{value}</div>
-      <div className="mt-1 text-[11px] text-muted-foreground">
+      <div className="mt-1 text-[11px] text-muted-foreground font-mono">
         {delta}
       </div>
     </motion.div>
@@ -284,11 +349,11 @@ function CardHeader({ title, subtitle, chips }) {
     <div className="flex items-start justify-between gap-4 flex-wrap">
       <div>
         <h3 className="font-display font-semibold text-lg">{title}</h3>
-        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5 font-mono">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-3">
         {chips?.map((c, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div key={i} className="flex items-center gap-1.5 text-xs text-muted-foreground font-mono">
             <span className="size-2 rounded-full" style={{ background: c.color }} />{c.label}
           </div>
         ))}

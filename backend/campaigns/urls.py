@@ -4,7 +4,7 @@ from .views import (
     EmailTemplateViewSet, ContactListViewSet, ContactViewSet, CampaignViewSet,
     CampaignStatusView, DashboardStatsView, DashboardChartsView,
     EmailHistoryListView, ActivityLogListView, InboundEmailViewSet,
-    GlobalSuppressionViewSet, ManualInboxSyncView, DirectSendView
+    GlobalSuppressionViewSet, ManualInboxSyncView, DirectSendView, PurgeSocialEmailsView
 )
 
 router = DefaultRouter()
@@ -17,6 +17,7 @@ router.register(r'suppressions', GlobalSuppressionViewSet, basename='suppression
 
 urlpatterns = [
     path('inbox/sync-now/', ManualInboxSyncView.as_view(), name='inbox-sync-now'),
+    path('inbox/purge-social/', PurgeSocialEmailsView.as_view(), name='inbox-purge-social'),
     path('send-direct/', DirectSendView.as_view(), name='send-direct'),
     path('campaigns/<uuid:pk>/status/', CampaignStatusView.as_view(), name='campaign-status'),
     path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
