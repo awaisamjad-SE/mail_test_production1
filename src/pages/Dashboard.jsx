@@ -15,16 +15,8 @@ import QuickSend from '../components/QuickSend';
 import CampaignsHub from './CampaignsHub';
 import TrackerAndLogsTab from './TrackerAndLogsTab';
 import SettingsTab from './SettingsTab';
+import AdminConsoleTab from './AdminConsoleTab';
 import CampaignDetailPage from './CampaignDetailPage';
-
-const NAV = [
-  { key: 'overview', label: 'Overview', icon: Activity, hint: 'Ops' },
-  { key: 'inbox', label: 'Master Inbox', icon: Inbox, hint: 'Unibox' },
-  { key: 'quick', label: 'Quick Send', icon: Send, hint: '1 ↦ 1' },
-  { key: 'campaigns', label: 'Campaigns Hub', icon: Users, hint: 'Launch' },
-  { key: 'tracker', label: 'Tracker & Logs', icon: LineChartIcon, hint: 'Audit' },
-  { key: 'settings', label: 'Settings & SMTP', icon: Settings, hint: 'Domain' },
-];
 
 export default function Dashboard() {
   const { isDark, toggle } = useTheme();
@@ -32,7 +24,26 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [smtpConfigured, setSmtpConfigured] = useState(true);
+  const [smtpAuthError, setSmtpAuthError] = useState(false);
+  const [smtpErrorMessage, setSmtpErrorMessage] = useState(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const isAdmin = Boolean(
+    user?.is_staff || 
+    user?.is_superuser || 
+    user?.role === 'admin' || 
+    (user?.email && (user.email.includes('admin') || user.email === 'awaisamjad.official@gmail.com'))
+  );
+
+  const navItems = [
+    { key: 'overview', label: 'Overview', icon: Activity, hint: 'Ops' },
+    { key: 'inbox', label: 'Master Inbox', icon: Inbox, hint: 'Unibox' },
+    { key: 'quick', label: 'Quick Send', icon: Send, hint: '1 ↦ 1' },
+    { key: 'campaigns', label: 'Campaigns Hub', icon: Users, hint: 'Launch' },
+    { key: 'tracker', label: 'Tracker & Logs', icon: LineChartIcon, hint: 'Audit' },
+    { key: 'settings', label: 'Settings & SMTP', icon: Settings, hint: 'Domain' },
+    ...(isAdmin ? [{ key: 'admin', label: 'Admin Console', icon: ShieldCheck, hint: 'Super' }] : [])
+  ];
 
   const getURLCampaignId = () => {
     const path = window.location.pathname;
@@ -61,9 +72,16 @@ export default function Dashboard() {
   useEffect(() => {
     const checkSMTP = async () => {
       try {
-        const data = await api.fetchSMTP();
-        if (data && data.gmail_address && data.has_password) {
+        const data = await api.fetchSMTPSettings();
+        const settings = Array.isArray(data) ? data[0] : data;
+        if (settings && (settings.gmail_address || settings.smtp_host)) {
           setSmtpConfigured(true);
+          if (settings.last_sync_status === 'AUTH_ERROR') {
+            setSmtpAuthError(true);
+            setSmtpErrorMessage(settings.last_error_message || 'Gmail App Password invalid or credentials changed.');
+          } else {
+            setSmtpAuthError(false);
+          }
         } else {
           setSmtpConfigured(false);
         }
@@ -108,6 +126,8 @@ export default function Dashboard() {
         return <TrackerAndLogsTab onNavigateToInbox={handleNavigateToInbox} />;
       case 'settings':
         return <SettingsTab />;
+      case 'admin':
+        return <AdminConsoleTab />;
       default:
         return <OverviewTab />;
     }
@@ -148,7 +168,7 @@ export default function Dashboard() {
             <div className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground px-3 mb-2">Workspace</div>
           )}
           <ul className="space-y-1">
-            {NAV.map((item) => {
+            {navItems.map((item) => {
               const active = activeTab === item.key;
               const Icon = item.icon;
               return (
@@ -267,7 +287,7 @@ export default function Dashboard() {
 
               <nav className="mt-4 flex-1 overflow-y-auto scrollbar-thin">
                 <ul className="space-y-1">
-                  {NAV.map((item) => {
+                  {navItems.map((item) => {
                     const active = activeTab === item.key;
                     const Icon = item.icon;
                     return (
@@ -339,8 +359,35 @@ export default function Dashboard() {
 
         {/* Content Viewport */}
         <div className="flex-1 px-6 lg:px-10 py-8 max-w-[1400px] w-full mx-auto">
+          {/* SMTP Auth Error Warning Banner */}
+          {smtpAuthError && activeTab !== 'settings' && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 rounded-2xl bg-rose-950/80 border-2 border-rose-500/60 text-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm shadow-2xl font-mono"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
+                  <AlertCircle className="size-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-100 uppercase tracking-wider">⚠️ Gmail SMTP Authentication Error</h4>
+                  <p className="text-xs text-slate-300 font-sans mt-0.5">
+                    {smtpErrorMessage || 'Gmail App Password changed or credentials invalid. Please re-authenticate your App Password in Settings & SMTP.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shrink-0 cursor-pointer shadow-lg transition"
+              >
+                Fix Credentials →
+              </button>
+            </motion.div>
+          )}
+
           {/* SMTP Empty Warning Bar */}
-          {!smtpConfigured && activeTab !== 'settings' && (
+          {!smtpConfigured && !smtpAuthError && activeTab !== 'settings' && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}

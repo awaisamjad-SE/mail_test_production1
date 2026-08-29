@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { 
   Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -8,15 +8,21 @@ import {
   Send, AlertTriangle, CheckCircle2, LayoutGrid, LineChart as LineChartIcon,
   RefreshCw, ChevronRight, Inbox, Sparkles, MoreHorizontal, ArrowUpRight, ArrowDownRight, Loader2
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 import * as api from '../utils/api';
 import imgOverview from '../assets/snippet-overview.jpg';
 
 export default function OverviewTab() {
+  const { isDark } = useTheme();
+  const tickColor = isDark ? '#cbd5e1' : '#334155';
+
   const [stats, setStats] = useState(null);
   const [charts, setCharts] = useState(null);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const intervalRef = useRef(null);
 
   const fetchData = async () => {
     try {
@@ -29,6 +35,9 @@ export default function OverviewTab() {
       setCharts(chartsData);
       setActivities(activitiesData);
     } catch (err) {
+      if (err.response?.status === 401 && intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
       console.error('Error loading overview data:', err);
     } finally {
       setLoading(false);
@@ -38,10 +47,10 @@ export default function OverviewTab() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       fetchData();
     }, 5000);
-    return () => clearInterval(interval);
+    return () => clearInterval(intervalRef.current);
   }, []);
 
   const handleRefresh = () => {
@@ -173,7 +182,7 @@ export default function OverviewTab() {
             subtitle="Dispatched volume and throughput"
             chips={[{ label: "Sent", color: "var(--lime)" }, { label: "Bounces", color: "var(--rose)" }]}
           />
-          <div className="h-72 mt-4">
+          <div className="h-72 mt-4 min-w-0 min-h-0">
             {dailySendsData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={dailySendsData} margin={{ left: -10, right: 10, top: 10 }}>
@@ -188,8 +197,8 @@ export default function OverviewTab() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 6" stroke="oklch(1 0 0 / 0.06)" />
-                  <XAxis dataKey="day" stroke="oklch(1 0 0 / 0.4)" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="oklch(1 0 0 / 0.4)" fontSize={11} tickLine={false} axisLine={false} />
+                  <XAxis dataKey="day" stroke="oklch(1 0 0 / 0.4)" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: tickColor }} />
+                  <YAxis stroke="oklch(1 0 0 / 0.4)" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: tickColor }} />
                   <Tooltip
                     contentStyle={{
                       background: "oklch(0.20 0.025 250)", border: "1px solid oklch(1 0 0 / 0.1)",
@@ -209,7 +218,7 @@ export default function OverviewTab() {
         {/* Chart 2: Delivery Partition */}
         <Card className="p-6 border border-border">
           <CardHeader title="Delivery status" subtitle="Partition breakdown" />
-          <div className="h-56 mt-2">
+          <div className="h-56 mt-2 min-w-0 min-h-0">
             {deliveryStatusData.some(d => d.value > 0) ? (
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <PieChart>
@@ -247,8 +256,8 @@ export default function OverviewTab() {
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart data={campaignPerformance} margin={{ left: -10, right: 10, top: 10 }}>
                   <CartesianGrid strokeDasharray="3 6" stroke="oklch(1 0 0 / 0.08)" />
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: '#e2e8f0' }} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: '#e2e8f0' }} />
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: tickColor }} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tick={{ fill: tickColor }} />
                   <Tooltip contentStyle={{ background: "oklch(0.20 0.025 250)", border: "1px solid oklch(1 0 0 / 0.1)", borderRadius: 12, fontSize: 12 }} />
                   <Bar dataKey="sent" fill="var(--lime)" radius={[6, 6, 0, 0]} name="Sent / Dispatched" />
                   <Bar dataKey="replied" fill="var(--cyan)" radius={[6, 6, 0, 0]} name="Lead Replies" />

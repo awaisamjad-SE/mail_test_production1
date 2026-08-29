@@ -281,3 +281,29 @@ export const fetchSMTPSettings = async () => {
   return response.data;
 };
 
+// Admin Console & Telemetry APIs
+export const fetchAdminUsers = async () => {
+  const response = await api.get('/api/admin/users/');
+  return response.data;
+};
+
+export const createAdminUser = async (userData) => {
+  const response = await api.post('/api/admin/users/', userData);
+  return response.data;
+};
+
+export const updateAdminUser = async (id, userData) => {
+  const response = await api.patch(`/api/admin/users/${id}/`, userData);
+  return response.data;
+};
+
+export const deleteAdminUser = async (id) => {
+  const response = await api.delete(`/api/admin/users/${id}/`);
+  return response.data;
+};
+
+export const fetchAdminTelemetry = async () => {
+  const response = await api.get('/api/admin/telemetry/');
+  return response.data;
+};
+

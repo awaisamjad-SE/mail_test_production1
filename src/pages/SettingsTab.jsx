@@ -297,6 +297,26 @@ export default function SettingsTab() {
         </div>
       </div>
 
+      {/* SMTP Auth Error Diagnostic Alert */}
+      {smtpData?.last_sync_status === 'AUTH_ERROR' && (
+        <div className="p-5 rounded-3xl bg-rose-950/80 border-2 border-rose-500/70 text-slate-100 space-y-2 shadow-2xl font-mono">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400">
+              <AlertCircle className="size-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-slate-100 uppercase tracking-wider">⚠️ SMTP Authentication Diagnostic Alert</h3>
+              <p className="text-xs text-rose-200 font-sans mt-0.5">
+                {smtpData.last_error_message || 'Gmail App Password changed or account credentials deleted. Background email dispatches & IMAP syncing are paused.'}
+              </p>
+            </div>
+          </div>
+          <div className="text-[11px] font-sans text-slate-300 bg-black/40 p-3 rounded-2xl border border-rose-500/30">
+            <strong>How to resolve:</strong> Open Google Account → Security → 2-Step Verification → App Passwords. Generate a new 16-character password and update the App Password field below.
+          </div>
+        </div>
+      )}
+
       {/* Content Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Profile and Password */}

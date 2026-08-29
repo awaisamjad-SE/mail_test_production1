@@ -10,9 +10,12 @@ import {
   ShieldCheck, Server, AlertOctagon, Terminal, FileText, Layers, Activity, Filter,
   Search, ExternalLink, HelpCircle, User, Mail, Clock, ChevronDown, ChevronUp, X
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 import * as api from '../utils/api';
 
 export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInbox }) {
+  const { isDark } = useTheme();
+  const tickColor = isDark ? '#cbd5e1' : '#334155';
   const [campaign, setCampaign] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,6 +42,8 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
   const [chartTimeframe, setChartTimeframe] = useState('LIFETIME');
   const [copiedId, setCopiedId] = useState(false);
   const [expandedQuotes, setExpandedQuotes] = useState({});
+
+  const pollRef = useRef(null);
 
   const downloadCSV = (filename, csvContent) => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -537,9 +542,9 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
             </div>
           </div>
 
-          <div className="h-64 mt-4">
+          <div className="h-64 mt-4 min-w-0 min-h-0">
             {throughputData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <AreaChart data={throughputData}>
                   <defs>
                     <linearGradient id="gSentDetail" x1="0" y1="0" x2="0" y2="1">
@@ -552,8 +557,8 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 6" stroke="oklch(1 0 0 / 0.08)" />
-                  <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tick={{ fill: '#e2e8f0' }} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tick={{ fill: '#e2e8f0' }} />
+                  <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} tick={{ fill: tickColor }} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tick={{ fill: tickColor }} />
                   <Tooltip contentStyle={{ background: "oklch(0.20 0.025 250)", border: "1px solid oklch(1 0 0 / 0.1)", borderRadius: 12, fontSize: 12 }} />
                   <Area type="monotone" dataKey="sent" stroke="#10b981" fill="url(#gSentDetail)" name="Emails Sent" />
                   <Area type="monotone" dataKey="bounced" stroke="#f43f5e" fill="url(#gBounceDetail)" name="Bounce Events" />
@@ -571,8 +576,8 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
         <div className="p-6 rounded-3xl glass border border-border space-y-4">
           <h3 className="font-bold text-foreground text-sm uppercase tracking-wider">Delivery Distribution</h3>
           
-          <div className="h-48 relative flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-48 relative flex items-center justify-center min-w-0 min-h-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <PieChart>
                 <Pie data={donutData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={4}>
                   {donutData.map((d, i) => <Cell key={i} fill={d.color} stroke="transparent" />)}

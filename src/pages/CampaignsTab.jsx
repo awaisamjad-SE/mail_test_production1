@@ -36,7 +36,11 @@ export default function CampaignsTab({ onNavigateToInbox }) {
         const freshCampaigns = await api.fetchCampaigns();
         setCampaigns(freshCampaigns);
       } catch (e) {
-        console.error('Failed to poll campaigns:', e);
+        if (e.response?.status === 401) {
+          clearInterval(pollIntervalRef.current);
+        } else {
+          console.error('Failed to poll campaigns:', e);
+        }
       }
     }, 5000);
 

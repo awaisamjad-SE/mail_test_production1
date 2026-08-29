@@ -224,10 +224,16 @@ def send_email_task(self, email_log_id):
         
     except Exception as e:
         error_msg = str(e)
-        if '530' in error_msg or 'Authentication Required' in error_msg or '5.7.0' in error_msg:
-            error_msg = "Gmail SMTP Auth Error: Invalid App Password (530 5.7.0 Authentication Required). Please update your App Password in Settings & SMTP."
+        is_auth_error = isinstance(e, smtplib.SMTPAuthenticationError) or any(code in error_msg for code in ['530', '535', 'Authentication Required', '5.7.0', '5.7.8'])
+        
+        if is_auth_error:
+            error_msg = f"Gmail SMTP Auth Error: Invalid App Password or Account Credentials ({str(e)}). Please update your App Password in Settings & SMTP."
+            smtp.last_sync_status = 'AUTH_ERROR'
+            smtp.last_error_message = error_msg
+            smtp.is_verified = False
+            smtp.save(update_fields=['last_sync_status', 'last_error_message', 'is_verified'])
 
-        is_non_transient = isinstance(e, (smtplib.SMTPRecipientsRefused, smtplib.SMTPAuthenticationError, TypeError)) or '530' in str(e)
+        is_non_transient = is_auth_error or isinstance(e, (smtplib.SMTPRecipientsRefused, TypeError))
         
         # Immediate fail for non-transient errors or after max retries
         if is_non_transient or log.retry_count >= 3:

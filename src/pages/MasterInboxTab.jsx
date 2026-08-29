@@ -71,7 +71,9 @@ export default function MasterInboxTab() {
         await api.triggerInboxSync();
         fetchEmails();
       } catch (err) {
-        // silent background poll
+        if (err.response?.status === 401) {
+          setAutoSync(false);
+        }
       }
     }, 5000);
     return () => clearInterval(interval);
