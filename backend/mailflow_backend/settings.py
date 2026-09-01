@@ -18,7 +18,7 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 raw_hosts = os.getenv('ALLOWED_HOSTS', '*')
 ALLOWED_HOSTS = [h.strip() for h in raw_hosts.split(',') if h.strip()]
 
-raw_csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://mail.awaisamjad.engineer,http://localhost:8000,http://127.0.0.1:8000')
+raw_csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://mailflow.awaisamjad.engineer,https://mail.awaisamjad.engineer,http://localhost:5173,http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000')
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf_origins.split(',') if o.strip()]
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -151,6 +151,28 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # CORS Settings
 CORS_ALLOW_ALL_ORIGINS = True  # For local development simplicity
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https?://.*$",
+]
+CORS_ALLOWED_ORIGINS = [
+    'https://mailflow.awaisamjad.engineer',
+    'https://mail.awaisamjad.engineer',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # REST Framework Configuration
 REST_FRAMEWORK = {
