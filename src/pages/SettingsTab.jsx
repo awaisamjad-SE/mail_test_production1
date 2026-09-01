@@ -30,7 +30,7 @@ export default function SettingsTab() {
   const [gmailLoading, setGmailLoading] = useState(false);
   
   // Custom / Hostinger SMTP settings state
-  const [customHost, setCustomHost] = useState('mail.fastnexa.com');
+  const [customHost, setCustomHost] = useState('');
   const [customPort, setCustomPort] = useState(465);
   const [customUseSsl, setCustomUseSsl] = useState(true);
   const [customEmail, setCustomEmail] = useState('');
@@ -60,14 +60,14 @@ export default function SettingsTab() {
         }
         // Set defaults for custom form if empty
         if (!customEmail) {
-          setCustomHost('mail.fastnexa.com');
+          setCustomHost('');
           setCustomPort(465);
           setCustomUseSsl(true);
           setCustomEmail('');
           setCustomPassword('');
         }
       } else {
-        setCustomHost(data.smtp_host || 'mail.fastnexa.com');
+        setCustomHost(data.smtp_host || '');
         setCustomPort(data.smtp_port || 465);
         setCustomUseSsl(data.use_ssl !== undefined ? data.use_ssl : true);
         setCustomEmail(data.gmail_address || '');
@@ -183,14 +183,19 @@ export default function SettingsTab() {
     }
 
     try {
+      const hostStr = (customHost.trim() || 'smtp.hostinger.com');
+      const calculatedImap = hostStr.toLowerCase().includes('hostinger')
+        ? 'imap.hostinger.com'
+        : (hostStr.startsWith('smtp.') ? hostStr.replace(/^smtp\./i, 'imap.') : hostStr);
+
       const payload = {
         provider: 'custom',
-        smtp_host: customHost.trim(),
-        smtp_port: parseInt(customPort, 10),
+        smtp_host: hostStr,
+        smtp_port: parseInt(customPort, 10) || 465,
         use_ssl: customUseSsl,
         gmail_address: customEmail.trim(),
         app_password: passToSend,
-        imap_host: 'imap.hostinger.com',
+        imap_host: calculatedImap,
         imap_port: 993,
         imap_use_ssl: true,
         is_monitoring_enabled: true
@@ -307,12 +312,20 @@ export default function SettingsTab() {
             <div>
               <h3 className="font-bold text-sm text-slate-100 uppercase tracking-wider">⚠️ SMTP Authentication Diagnostic Alert</h3>
               <p className="text-xs text-rose-200 font-sans mt-0.5">
-                {smtpData.last_error_message || 'Gmail App Password changed or account credentials deleted. Background email dispatches & IMAP syncing are paused.'}
+                {smtpData.last_error_message || (smtpData.provider === 'custom' ? 'Hostinger / Custom SMTP authentication failed. Background dispatches and IMAP syncing are paused.' : 'Gmail App Password changed or account credentials deleted. Background email dispatches & IMAP syncing are paused.')}
               </p>
             </div>
           </div>
           <div className="text-[11px] font-sans text-slate-300 bg-black/40 p-3 rounded-2xl border border-rose-500/30">
-            <strong>How to resolve:</strong> Open Google Account → Security → 2-Step Verification → App Passwords. Generate a new 16-character password and update the App Password field below.
+            {smtpData?.provider === 'custom' ? (
+              <span>
+                <strong>How to resolve:</strong> Verify your mailbox password in your Hostinger / cPanel control panel (hPanel). Ensure your Username is your full email address (e.g. <code>you@yourdomain.com</code>), and use SMTP Host <code>smtp.hostinger.com</code> with Port 465 (SSL) or Port 587 (TLS).
+              </span>
+            ) : (
+              <span>
+                <strong>How to resolve:</strong> Open Google Account → Security → 2-Step Verification → App Passwords. Generate a new 16-character password and update the App Password field below.
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -635,7 +648,7 @@ export default function SettingsTab() {
                   type="email"
                   value={customEmail}
                   onChange={(e) => setCustomEmail(e.target.value)}
-                  placeholder="awaisamjad@fastnexa.com"
+                  placeholder="you@yourdomain.com"
                   className="input text-xs"
                   required
                 />

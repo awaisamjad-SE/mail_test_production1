@@ -93,7 +93,7 @@ class IMAPSyncEngine:
         if self.credential.provider == 'gmail':
             connection_targets.append(('imap.gmail.com', 993, True))
         else:
-            primary_host = (self.credential.imap_host or self.credential.smtp_host or 'mail.fastnexa.com').strip()
+            primary_host = (self.credential.imap_host or self.credential.smtp_host or 'imap.hostinger.com').strip()
             connection_targets.append((primary_host, 993, True))
             connection_targets.append((primary_host, 143, False))
             if 'hostinger' in primary_host.lower():

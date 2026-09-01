@@ -383,7 +383,7 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
                 <input
                   value={cc}
                   onChange={(e) => setCc(e.target.value)}
-                  placeholder="ceo@fastnexa.com, bilal@fastnexa.com"
+                  placeholder="alex@company.com, sarah@company.com"
                   className="input"
                 />
               </label>

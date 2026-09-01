@@ -173,7 +173,7 @@ def send_email_task(self, email_log_id):
         if smtp.provider == 'gmail':
             connection_attempts.append(('smtp.gmail.com', 587, False))
         else:
-            primary_host = (smtp.smtp_host or 'mail.fastnexa.com').strip()
+            primary_host = (smtp.smtp_host or 'smtp.hostinger.com').strip()
             primary_port = int(smtp.smtp_port or 465)
             primary_ssl = smtp.use_ssl if smtp.use_ssl is not None else (primary_port == 465)
 

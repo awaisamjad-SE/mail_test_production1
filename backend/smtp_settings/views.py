@@ -60,7 +60,7 @@ class SMTPCredentialView(APIView):
     def post(self, request):
         data = request.data.copy()
         if not data.get('imap_host'):
-            data['imap_host'] = data.get('smtp_host') or 'mail.fastnexa.com'
+            data['imap_host'] = data.get('smtp_host') or 'smtp.hostinger.com'
             data['imap_port'] = 993
             data['imap_use_ssl'] = True
 
@@ -73,9 +73,13 @@ class SMTPCredentialView(APIView):
             serializer = SMTPCredentialSerializer(data=data, context={'request': request})
         
         if serializer.is_valid():
-            serializer.save()
+            saved_smtp = serializer.save()
+            saved_smtp.last_sync_status = 'OK'
+            saved_smtp.last_error_message = None
+            saved_smtp.is_verified = False
+            saved_smtp.save(update_fields=['last_sync_status', 'last_error_message', 'is_verified'])
             ActivityLog.objects.create(user=request.user, action="SMTP Credentials Updated")
-            return Response(serializer.data, status=status.HTTP_200_OK if smtp else status.HTTP_201_CREATED)
+            return Response(SMTPCredentialSerializer(saved_smtp, context={'request': request}).data, status=status.HTTP_200_OK if smtp else status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -107,7 +111,7 @@ class SMTPTestConnectionView(APIView):
                 if smtp.provider == 'gmail':
                     connection_attempts.append(('smtp.gmail.com', 587, False))
                 else:
-                    primary_host = (smtp.smtp_host or 'mail.fastnexa.com').strip()
+                    primary_host = (smtp.smtp_host or 'smtp.hostinger.com').strip()
                     primary_port = int(smtp.smtp_port or 465)
                     primary_ssl = smtp.use_ssl if smtp.use_ssl is not None else (primary_port == 465)
 
@@ -139,25 +143,32 @@ class SMTPTestConnectionView(APIView):
 
                 server.quit()
 
-                # Mark as verified
+                # Mark as verified and clear errors
                 smtp.is_verified = True
-                smtp.save()
+                smtp.last_sync_status = 'OK'
+                smtp.last_error_message = None
+                smtp.save(update_fields=['is_verified', 'last_sync_status', 'last_error_message'])
 
                 ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Successful ({connected_info})")
                 return Response({"status": "Success", "message": f"SMTP connection to {connected_info} verified successfully!"})
             except smtplib.SMTPAuthenticationError as auth_err:
                 smtp.is_verified = False
-                smtp.save()
+                smtp.last_sync_status = 'AUTH_ERROR'
                 error_detail = auth_err.smtp_error.decode('utf-8', errors='ignore') if isinstance(auth_err.smtp_error, bytes) else str(auth_err.smtp_error)
                 msg = f"Authentication Failed ({host}:{port}): {error_detail}"
+                smtp.last_error_message = msg
+                smtp.save(update_fields=['is_verified', 'last_sync_status', 'last_error_message'])
                 ActivityLog.objects.create(user=request.user, action=f"SMTP Auth Failed: {msg}")
                 return Response({"status": "Failed", "error": msg}, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
                 smtp.is_verified = False
-                smtp.save()
+                smtp.last_sync_status = 'CONNECTION_ERROR'
                 error_msg = str(e)
+                msg = f"Connection Failed ({host}:{port}): {error_msg}"
+                smtp.last_error_message = msg
+                smtp.save(update_fields=['is_verified', 'last_sync_status', 'last_error_message'])
                 ActivityLog.objects.create(user=request.user, action=f"SMTP Connection Test Failed: {error_msg}")
-                return Response({"status": "Failed", "error": f"Connection Failed to {host}:{port} - {error_msg}"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"status": "Failed", "error": msg}, status=status.HTTP_400_BAD_REQUEST)
 
 
         except SMTPCredential.DoesNotExist:
