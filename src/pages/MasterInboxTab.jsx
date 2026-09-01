@@ -38,7 +38,7 @@ export default function MasterInboxTab() {
   const [sendingForward, setSendingForward] = useState(false);
   const [forwardSuccess, setForwardSuccess] = useState(null);
 
-  const [senderAddress, setSenderAddress] = useState('awaisamjad.official@gmail.com');
+  const [senderAddress, setSenderAddress] = useState('');
 
   const fetchEmails = async () => {
     try {

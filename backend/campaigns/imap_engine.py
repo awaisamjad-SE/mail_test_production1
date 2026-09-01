@@ -93,11 +93,32 @@ class IMAPSyncEngine:
         if self.credential.provider == 'gmail':
             connection_targets.append(('imap.gmail.com', 993, True))
         else:
-            primary_host = (self.credential.imap_host or self.credential.smtp_host or 'imap.hostinger.com').strip()
-            connection_targets.append((primary_host, 993, True))
-            connection_targets.append((primary_host, 143, False))
-            if 'hostinger' in primary_host.lower():
-                connection_targets.append(('imap.hostinger.com', 993, True))
+            candidate_hosts = []
+            if self.credential.imap_host:
+                candidate_hosts.append(self.credential.imap_host.strip())
+
+            if self.credential.smtp_host:
+                sh = self.credential.smtp_host.strip()
+                candidate_hosts.append(sh)
+                if sh.lower().startswith('smtp.'):
+                    candidate_hosts.append(re.sub(r'^smtp\.', 'imap.', sh, flags=re.IGNORECASE))
+                    candidate_hosts.append(re.sub(r'^smtp\.', 'mail.', sh, flags=re.IGNORECASE))
+                elif sh.lower().startswith('mail.'):
+                    candidate_hosts.append(re.sub(r'^mail\.', 'imap.', sh, flags=re.IGNORECASE))
+
+            if 'hostinger' in str(self.credential.smtp_host).lower() or 'hostinger' in str(self.credential.imap_host).lower():
+                candidate_hosts.append('imap.hostinger.com')
+
+            seen = set()
+            unique_hosts = []
+            for h in candidate_hosts:
+                if h and h.lower() not in seen:
+                    seen.add(h.lower())
+                    unique_hosts.append(h)
+
+            for host in unique_hosts:
+                connection_targets.append((host, 993, True))
+                connection_targets.append((host, 143, False))
 
         mail = None
         last_err = None
@@ -176,7 +197,9 @@ class IMAPSyncEngine:
             if uid <= last_uid:
                 continue
 
-            status, fetch_data = mail.uid('FETCH', uid_bytes, '(RFC822)')
+            status, fetch_data = mail.uid('FETCH', uid_bytes, '(BODY.PEEK[])')
+            if status != 'OK' or not fetch_data or not fetch_data[0]:
+                status, fetch_data = mail.uid('FETCH', uid_bytes, '(RFC822)')
             if status != 'OK' or not fetch_data or not fetch_data[0]:
                 continue
 

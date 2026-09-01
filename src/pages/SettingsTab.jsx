@@ -574,8 +574,8 @@ export default function SettingsTab() {
               <div className="flex items-center gap-2">
                 <Globe className="w-5 h-5 text-cyan" />
                 <div>
-                  <h3 className="font-display font-semibold text-base">Hostinger / Custom SMTP</h3>
-                  <p className="text-xs text-muted-foreground">Dispatch mail via Hostinger / cPanel servers</p>
+                  <h3 className="font-display font-semibold text-base">Custom SMTP / cPanel / Webmail</h3>
+                  <p className="text-xs text-muted-foreground">Dispatch & sync mail via cPanel, Hostinger, Webmail, or custom servers</p>
                 </div>
               </div>
               {smtpData?.provider === 'custom' && smtpData?.is_verified && (
@@ -590,17 +590,32 @@ export default function SettingsTab() {
                 <label className="block space-y-1.5 sm:col-span-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium">SMTP Server Host</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCustomHost('smtp.hostinger.com');
-                        setCustomPort(465);
-                        setCustomUseSsl(true);
-                      }}
-                      className="text-[10px] text-cyan hover:underline cursor-pointer font-mono font-bold"
-                    >
-                      Fill Hostinger Preset (smtp.hostinger.com:465)
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const domain = customEmail.includes('@') ? customEmail.split('@')[1] : 'fastnexa.com';
+                          setCustomHost(`mail.${domain}`);
+                          setCustomPort(465);
+                          setCustomUseSsl(true);
+                        }}
+                        className="text-[10px] text-cyan hover:underline cursor-pointer font-mono font-bold"
+                      >
+                        cPanel Preset (mail.domain.com:465)
+                      </button>
+                      <span className="text-[10px] text-muted-foreground">|</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomHost('smtp.hostinger.com');
+                          setCustomPort(465);
+                          setCustomUseSsl(true);
+                        }}
+                        className="text-[10px] text-cyan hover:underline cursor-pointer font-mono font-bold"
+                      >
+                        Hostinger Preset
+                      </button>
+                    </div>
                   </div>
                   <input
                     type="text"
@@ -657,7 +672,7 @@ export default function SettingsTab() {
               <label className="block space-y-2">
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-medium">Mailbox Password</span>
-                  <span className="text-muted-foreground font-mono text-[10px]">Hostinger Password</span>
+                  <span className="text-muted-foreground font-mono text-[10px]">cPanel / Webmail Password</span>
                 </div>
                 <input
                   type="password"
@@ -673,7 +688,7 @@ export default function SettingsTab() {
                   required
                 />
                 <p className="text-[10px] text-muted-foreground leading-normal mt-1">
-                  Use the email account password set in your Hostinger / cPanel email control panel.
+                  Use the email account password set in your cPanel, Hostinger, or Webmail control panel.
                 </p>
               </label>
 

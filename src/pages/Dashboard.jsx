@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [smtpConfigured, setSmtpConfigured] = useState(true);
   const [smtpAuthError, setSmtpAuthError] = useState(false);
   const [smtpErrorMessage, setSmtpErrorMessage] = useState(null);
+  const [smtpProvider, setSmtpProvider] = useState('gmail');
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const isAdmin = Boolean(
@@ -76,9 +77,16 @@ export default function Dashboard() {
         const settings = Array.isArray(data) ? data[0] : data;
         if (settings && (settings.gmail_address || settings.smtp_host)) {
           setSmtpConfigured(true);
+          const prov = settings.provider || 'gmail';
+          setSmtpProvider(prov);
           if (settings.last_sync_status === 'AUTH_ERROR') {
             setSmtpAuthError(true);
-            setSmtpErrorMessage(settings.last_error_message || 'Gmail App Password invalid or credentials changed.');
+            setSmtpErrorMessage(
+              settings.last_error_message ||
+              (prov === 'custom'
+                ? 'Hostinger / Custom SMTP authentication failed. Please update credentials in Settings & SMTP.'
+                : 'Gmail App Password invalid or credentials changed.')
+            );
           } else {
             setSmtpAuthError(false);
           }
@@ -371,9 +379,11 @@ export default function Dashboard() {
                   <AlertCircle className="size-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-slate-100 uppercase tracking-wider">⚠️ Gmail SMTP Authentication Error</h4>
+                  <h4 className="font-bold text-sm text-slate-100 uppercase tracking-wider">
+                    ⚠️ {smtpProvider === 'custom' ? 'Hostinger / Custom SMTP' : 'Gmail SMTP'} Authentication Error
+                  </h4>
                   <p className="text-xs text-slate-300 font-sans mt-0.5">
-                    {smtpErrorMessage || 'Gmail App Password changed or credentials invalid. Please re-authenticate your App Password in Settings & SMTP.'}
+                    {smtpErrorMessage}
                   </p>
                 </div>
               </div>
