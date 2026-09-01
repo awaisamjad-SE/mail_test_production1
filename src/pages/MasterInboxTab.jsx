@@ -79,19 +79,12 @@ export default function MasterInboxTab() {
     }).catch(() => {});
   }, []);
 
-  // Background Auto-Polling every 5 seconds for live email fetching
+  // Background Auto-Polling every 20 seconds for live email fetching
   useEffect(() => {
     if (!autoSync) return;
-    const interval = setInterval(async () => {
-      try {
-        await api.triggerInboxSync();
-        fetchEmails();
-      } catch (err) {
-        if (err.response?.status === 401) {
-          setAutoSync(false);
-        }
-      }
-    }, 5000);
+    const interval = setInterval(() => {
+      fetchEmails();
+    }, 20000);
     return () => clearInterval(interval);
   }, [autoSync]);
 
