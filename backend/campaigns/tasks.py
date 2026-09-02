@@ -17,18 +17,26 @@ from mailflow_backend.encryption import decrypt_password
 
 logger = logging.getLogger(__name__)
 
-def dispatch_email(email_log_id):
-    """Dispatches email immediately in background thread to guarantee instant delivery without Celery delays."""
-    import threading
+def dispatch_email(email_log_id, countdown=0):
+    """Dispatches email in background thread with optional delay/countdown to guarantee delivery even if website is closed."""
+    import threading, time
     def run_task():
+        if countdown > 0:
+            time.sleep(countdown)
         try:
             send_email_task.apply(args=[str(email_log_id)])
         except Exception as err:
             logger.warning(f"Direct task apply warning ({err}). Retrying via Celery delay.")
             try:
-                send_email_task.delay(str(email_log_id))
+                send_email_task.apply_async(args=[str(email_log_id)], countdown=countdown)
             except Exception:
                 pass
+
+    if countdown > 0:
+        try:
+            send_email_task.apply_async(args=[str(email_log_id)], countdown=countdown)
+        except Exception:
+            pass
 
     threading.Thread(target=run_task, daemon=True).start()
 

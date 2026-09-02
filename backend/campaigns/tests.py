@@ -32,8 +32,8 @@ class CampaignsTests(APITestCase):
         self.token = login_res.data['access']
         self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + self.token)
 
-    @patch('campaigns.views.send_email_task.delay')
-    def test_create_campaign_triggers_celery_task(self, mock_send_email):
+    @patch('campaigns.views.dispatch_email')
+    def test_create_campaign_triggers_celery_task(self, mock_dispatch_email):
         payload = {
             'name': 'Test Bulk Campaign',
             'campaign_type': 'BULK_SEND',
@@ -64,11 +64,11 @@ class CampaignsTests(APITestCase):
         self.assertEqual(log2.subject, 'Welcome Bob!')
         self.assertEqual(log2.body, 'Hi Bob, welcome to MailFlow.')
         
-        # Verify Celery task is triggered
-        self.assertEqual(mock_send_email.call_count, 2)
+        # Verify Celery/background dispatch is triggered
+        self.assertEqual(mock_dispatch_email.call_count, 2)
 
-    @patch('campaigns.views.send_email_task.delay')
-    def test_direct_send_email(self, mock_send_email):
+    @patch('campaigns.views.dispatch_email')
+    def test_direct_send_email(self, mock_dispatch_email):
         payload = {
             'to': 'direct@example.com',
             'cc': 'manager@example.com',
@@ -77,13 +77,13 @@ class CampaignsTests(APITestCase):
         }
         response = self.client.post('/api/send-direct/', payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(mock_send_email.call_count, 1)
-        args, _ = mock_send_email.call_args
+        self.assertEqual(mock_dispatch_email.call_count, 1)
+        args, _ = mock_dispatch_email.call_args
         self.assertIsInstance(args[0], str)
 
 
-    @patch('campaigns.views.send_email_task.delay')
-    def test_create_campaign_with_multipart_list_of_strings_recipients(self, mock_send_email):
+    @patch('campaigns.views.dispatch_email')
+    def test_create_campaign_with_multipart_list_of_strings_recipients(self, mock_dispatch_email):
         payload = {
             'name': 'Test Multipart List Campaign',
             'campaign_type': 'QUICK_SEND',
@@ -94,8 +94,8 @@ class CampaignsTests(APITestCase):
         }
         response = self.client.post(self.campaigns_url, payload, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(mock_send_email.call_count, 1)
-        args, kwargs = mock_send_email.call_args
+        self.assertEqual(mock_dispatch_email.call_count, 1)
+        args, kwargs = mock_dispatch_email.call_args
         self.assertIsInstance(args[0], str)
 
     def test_template_crud(self):

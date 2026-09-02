@@ -26,6 +26,7 @@ class Campaign(models.Model):
     unsubscribed_count = models.IntegerField(default=0)
 
     status = models.CharField(max_length=20, default='Draft') # 'Draft', 'Processing', 'Completed', 'Failed'
+    send_gap_minutes = models.IntegerField(default=5)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -56,6 +57,7 @@ class EmailLog(models.Model):
     body = models.TextField(default="")
     status = models.CharField(max_length=20, default='PENDING', choices=STATUS_CHOICES)
     error_message = models.TextField(null=True, blank=True)
+    scheduled_at = models.DateTimeField(null=True, blank=True, db_index=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     retry_count = models.IntegerField(default=0)
 

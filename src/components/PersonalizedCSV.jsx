@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Send, Target, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, ArrowLeft, ArrowRight, Edit2, Check, X } from 'lucide-react';
+import { Send, Target, Loader2, ChevronDown, ChevronUp, AlertCircle, CheckCircle2, ArrowLeft, ArrowRight, Edit2, Check, X, Clock } from 'lucide-react';
 import CSVUploader from './CSVUploader';
 import EmailPreview from './EmailPreview';
 import StatusToast from './StatusToast';
@@ -12,6 +11,7 @@ export default function PersonalizedCSV({ onNavigateToTracker, initialCampaignNa
   const [file, setFile] = useState(null);
   const [replyTo, setReplyTo] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendGapMinutes, setSendGapMinutes] = useState(5);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [showTable, setShowTable] = useState(false);
   const [toast, setToast] = useState(null);
@@ -74,29 +74,31 @@ export default function PersonalizedCSV({ onNavigateToTracker, initialCampaignNa
     }));
 
     const payload = {
-      name: campaignName.trim() || `Personalized Campaign (${csvData.validCount} rows)`,
-
+      name: campaignName.trim() || `Personalized CSV (${csvData.validCount} rows)`,
       campaign_type: 'PERSONALIZED',
       subject: '{{Subject}}',
       body: '{{Body}}',
+      send_gap_minutes: parseInt(sendGapMinutes, 10),
       recipients
     };
 
-
     try {
-      await sendEmails(payload);
+      const res = await sendEmails(payload);
+      const createdCampaignId = res?.id || res?.data?.id;
+
       setToast({ 
         type: 'success', 
         message: 'Personalized campaign enqueued!', 
-        details: `Processing ${csvData.validCount} custom emails in backend queue.` 
+        details: `Dispatched to background queue with ${sendGapMinutes}m delay gap.` 
       });
       setCsvData(null);
       setFile(null);
       
-      if (onNavigateToTracker) {
-        setTimeout(() => {
-          onNavigateToTracker();
-        }, 1500);
+      if (createdCampaignId) {
+        window.history.pushState({}, '', `/campaigns/${createdCampaignId}`);
+        window.dispatchEvent(new Event('popstate'));
+      } else if (onNavigateToTracker) {
+        onNavigateToTracker();
       }
     } catch (err) {
       setToast({ 
@@ -330,6 +332,31 @@ export default function PersonalizedCSV({ onNavigateToTracker, initialCampaignNa
                 <span className="size-6 rounded-lg bg-cyan/10 border border-cyan/35 text-cyan text-xs font-bold font-mono grid place-items-center">2</span>
                 <h3 className="text-base font-display font-semibold">Additional Configuration</h3>
               </div>
+
+              {/* Staggered Delay Selector */}
+              <label className="block space-y-2">
+                <span className="text-sm font-medium flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="size-4 text-cyan" /> Delay Between Emails (Staggered Dispatch)
+                  </span>
+                  <span className="text-[11px] text-lime font-mono">Background Queue</span>
+                </span>
+                <select
+                  value={sendGapMinutes}
+                  onChange={(e) => setSendGapMinutes(e.target.value)}
+                  className="input py-2.5 text-sm bg-surface text-foreground border border-border rounded-xl cursor-pointer"
+                >
+                  <option value="5">5 Minutes Gap (Recommended for High Deliverability)</option>
+                  <option value="10">10 Minutes Gap (Safest / Anti-Spam Protection)</option>
+                  <option value="1">1 Minute Gap (Fast Stagger)</option>
+                  <option value="3">3 Minutes Gap</option>
+                  <option value="15">15 Minutes Gap</option>
+                  <option value="0">Instant (No Gap)</option>
+                </select>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Emails send 1-by-1 in background with a <strong>{sendGapMinutes} minute gap</strong> between each recipient. You can close this website or turn off your PC; the server continues sending on schedule.
+                </p>
+              </label>
 
               <label className="block space-y-2">
                 <span className="text-sm font-medium flex items-center gap-1.5">

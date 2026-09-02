@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Send, Users, Loader2, ChevronDown, ChevronUp, ArrowLeft, ArrowRight, Edit2, Check, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Send, Users, Loader2, ChevronDown, ChevronUp, ArrowLeft, ArrowRight, Edit2, Check, X, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import CSVUploader from './CSVUploader';
 import EmailPreview from './EmailPreview';
 import StatusToast from './StatusToast';
@@ -17,6 +16,7 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
   const [body, setBody] = useState('');
   const [cc, setCc] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendGapMinutes, setSendGapMinutes] = useState(5);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [showTable, setShowTable] = useState(false);
   const [toast, setToast] = useState(null);
@@ -99,27 +99,31 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
       campaign_type: 'BULK_SEND',
       subject: subject,
       body: body,
+      send_gap_minutes: parseInt(sendGapMinutes, 10),
       ...(cc && { cc }),
       recipients
     };
 
-
     try {
-      await sendEmails(payload);
+      const res = await sendEmails(payload);
+      const createdCampaignId = res?.id || res?.data?.id;
+
       setToast({ 
         type: 'success', 
         message: 'Campaign launched successfully!', 
-        details: `Processing ${csvData.validCount} emails in background queue.` 
+        details: `Dispatched to background queue with ${sendGapMinutes}m delay gap.` 
       });
       setSubject('');
       setBody('');
       setCsvData(null);
       setFile(null);
 
-      if (onNavigateToTracker) {
-        setTimeout(() => {
-          onNavigateToTracker();
-        }, 1500);
+      // Auto-navigate immediately to campaign detail tracker
+      if (createdCampaignId) {
+        window.history.pushState({}, '', `/campaigns/${createdCampaignId}`);
+        window.dispatchEvent(new Event('popstate'));
+      } else if (onNavigateToTracker) {
+        onNavigateToTracker();
       }
     } catch (err) {
       setToast({ 
@@ -358,6 +362,31 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
                     </option>
                   ))}
                 </select>
+              </label>
+
+              {/* Staggered Delay Selector */}
+              <label className="block space-y-2">
+                <span className="text-sm font-medium flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="size-4 text-cyan" /> Delay Between Emails (Staggered Dispatch)
+                  </span>
+                  <span className="text-[11px] text-lime font-mono">Background Queue</span>
+                </span>
+                <select
+                  value={sendGapMinutes}
+                  onChange={(e) => setSendGapMinutes(e.target.value)}
+                  className="input py-2.5 text-sm bg-surface text-foreground border border-border rounded-xl cursor-pointer"
+                >
+                  <option value="5">5 Minutes Gap (Recommended for High Deliverability)</option>
+                  <option value="10">10 Minutes Gap (Safest / Anti-Spam Protection)</option>
+                  <option value="1">1 Minute Gap (Fast Stagger)</option>
+                  <option value="3">3 Minutes Gap</option>
+                  <option value="15">15 Minutes Gap</option>
+                  <option value="0">Instant (No Gap)</option>
+                </select>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Emails send 1-by-1 in background with a <strong>{sendGapMinutes} minute gap</strong> between each recipient. You can close this website or turn off your PC; the server continues sending on schedule.
+                </p>
               </label>
 
               <div className="block space-y-2">

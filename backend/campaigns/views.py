@@ -208,8 +208,15 @@ class DirectSendView(APIView):
         if not recipients:
             return Response({"error": "At least one valid recipient email is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        send_gap_minutes = int(data.get('send_gap_minutes', 0))
+        send_gap_seconds = send_gap_minutes * 60
+        now = timezone.now()
+
         created_logs = []
-        for to_email in recipients:
+        for idx, to_email in enumerate(recipients):
+            dispatch_time = now + timedelta(seconds=idx * send_gap_seconds)
+            countdown = int(idx * send_gap_seconds)
+
             log = EmailLog.objects.create(
                 user=user,
                 campaign=None,
@@ -218,13 +225,14 @@ class DirectSendView(APIView):
                 cc=cc,
                 subject=subject,
                 body=body,
-                status='PENDING'
+                status='PENDING',
+                scheduled_at=dispatch_time
             )
             created_logs.append(log)
             ActivityLog.objects.create(user=user, action=f"Direct email enqueued to {to_email}")
 
-            # Send email via Celery task (eager execution in-process)
-            send_email_task.delay(str(log.id))
+            # Send email via deferred dispatch
+            dispatch_email(str(log.id), countdown=countdown)
 
 
         if len(created_logs) == 1:
@@ -294,6 +302,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
         if not recipients or len(recipients) == 0:
             return Response({"error": "At least one recipient is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        send_gap_minutes = int(data.get('send_gap_minutes', 5))
+        send_gap_seconds = send_gap_minutes * 60
+
         # Create Campaign
         campaign = Campaign.objects.create(
             user=user,
@@ -301,14 +312,16 @@ class CampaignViewSet(viewsets.ModelViewSet):
             campaign_type=campaign_type,
             subject=subject,
             body=body,
+            send_gap_minutes=send_gap_minutes,
             total_recipients=len(recipients),
             status='Processing'
         )
 
-        ActivityLog.objects.create(user=user, action=f"Created Campaign: {name} ({len(recipients)} recipients)")
+        ActivityLog.objects.create(user=user, action=f"Created Campaign: {name} ({len(recipients)} recipients, {send_gap_minutes}m delay gap)")
 
-        # Create EmailLog entries and schedule background tasks
-        for r in recipients:
+        now = timezone.now()
+        # Create EmailLog entries and schedule background tasks with time gaps
+        for idx, r in enumerate(recipients):
             email_addr = r.get('email')
             rcpt_name = r.get('name', '')
             variables = r.get('variables', {})
@@ -327,6 +340,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 rcpt_subject = rcpt_subject.replace(placeholder, str(val))
                 rcpt_body = rcpt_body.replace(placeholder, str(val))
 
+            dispatch_time = now + timedelta(seconds=idx * send_gap_seconds)
+            countdown = int(idx * send_gap_seconds)
+
             log = EmailLog.objects.create(
                 user=user,
                 campaign=campaign,
@@ -335,11 +351,12 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 cc=cc,
                 subject=rcpt_subject,
                 body=rcpt_body,
-                status='PENDING'
+                status='PENDING',
+                scheduled_at=dispatch_time
             )
 
-            # Trigger Celery email dispatch
-            send_email_task.delay(str(log.id))
+            # Trigger email dispatch with calculated delay countdown
+            dispatch_email(str(log.id), countdown=countdown)
 
 
 

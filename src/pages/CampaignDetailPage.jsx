@@ -476,6 +476,10 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
             <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground mt-2 flex-wrap">
               <span>{campaign.campaign_type || 'PERSONALIZED CSV'} Campaign</span>
               <span>•</span>
+              <span className="text-cyan font-bold flex items-center gap-1">
+                <Clock className="size-3.5" /> {campaign.send_gap_minutes || 5}m Gap Between Emails
+              </span>
+              <span>•</span>
               <span>Created {new Date(campaign.created_at).toLocaleString()}</span>
               <span>•</span>
               <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-lg border border-border">
@@ -871,9 +875,13 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
                         <td className="p-3.5 text-muted-foreground truncate max-w-xs">{row.subject}</td>
                         <td className="p-3.5">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            row.status === 'SENT' ? 'bg-lime/20 text-lime border border-lime/30' : 'bg-rose/20 text-rose border border-rose/30'
+                            row.status === 'SENT' ? 'bg-lime/20 text-lime border border-lime/30' :
+                            row.status === 'FAILED' ? 'bg-rose/20 text-rose border border-rose/30' :
+                            'bg-amber/20 text-amber border border-amber/30 animate-pulse'
                           }`}>
-                            {row.status}
+                            {row.status === 'PENDING' && row.scheduled_at && new Date(row.scheduled_at) > new Date()
+                              ? `SCHEDULED (${Math.max(0, Math.ceil((new Date(row.scheduled_at) - new Date()) / 60000))}m)`
+                              : row.status}
                           </span>
                         </td>
                         <td className="p-3.5">
@@ -885,7 +893,11 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
                           </span>
                         </td>
                         <td className="p-3.5 text-muted-foreground">
-                          {row.sent_at ? new Date(row.sent_at).toLocaleTimeString() : 'Pending'}
+                          {row.sent_at 
+                            ? new Date(row.sent_at).toLocaleTimeString() 
+                            : row.scheduled_at 
+                              ? `Scheduled ${new Date(row.scheduled_at).toLocaleTimeString()}`
+                              : 'Pending'}
                         </td>
                         <td className="p-3.5 text-right">
                           <button className="text-cyan underline text-[11px]">
