@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Send, Users, Loader2, ChevronDown, ChevronUp, ArrowLeft, ArrowRight, Edit2, Check, X, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import CSVUploader from './CSVUploader';
 import EmailPreview from './EmailPreview';
