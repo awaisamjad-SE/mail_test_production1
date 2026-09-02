@@ -28,15 +28,9 @@ def dispatch_email(email_log_id, countdown=0):
         except Exception as err:
             logger.warning(f"Direct task apply warning ({err}). Retrying via Celery delay.")
             try:
-                send_email_task.apply_async(args=[str(email_log_id)], countdown=countdown)
+                send_email_task.delay(str(email_log_id))
             except Exception:
                 pass
-
-    if countdown > 0:
-        try:
-            send_email_task.apply_async(args=[str(email_log_id)], countdown=countdown)
-        except Exception:
-            pass
 
     threading.Thread(target=run_task, daemon=True).start()
 
