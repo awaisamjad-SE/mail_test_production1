@@ -117,7 +117,7 @@ def send_email_task(self, email_log_id):
     # 4. Pre-Generate & Persist Canonical Message-ID BEFORE SMTP transmission
     default_sender_prefix = authenticated_sender.split('@')[0].replace('.', ' ').title() if '@' in authenticated_sender else ''
     from_name = user.full_name or default_sender_prefix
-    sender_domain = authenticated_sender.split('@')[-1] if '@' in authenticated_sender else 'mailflow.engineer'
+    sender_domain = authenticated_sender.split('@')[-1] if '@' in authenticated_sender else 'gmail.com'
 
     if not log.message_id:
         raw_msg_id = make_msgid(idstring=str(log.id), domain=sender_domain)
@@ -127,7 +127,7 @@ def send_email_task(self, email_log_id):
     # 5. Formulate email message using Canonical EmailMessage Engine
     is_html = log.body.strip().startswith('<!DOCTYPE html>') or '<html' in log.body.lower() or '<div' in log.body.lower()
 
-    msg = EmailMessage(policy=policy.SMTP)
+    msg = EmailMessage(policy=policy.default)
     msg['Subject'] = log.subject
     
     # Format From header cleanly (handles UTF-8 display names with RFC 2047 encoding)
@@ -140,15 +140,14 @@ def send_email_task(self, email_log_id):
     msg['To'] = log.recipient
     msg['Date'] = formatdate(localtime=True)
     msg['Message-ID'] = f"<{log.message_id}>"
-    msg['X-FastNexa-EmailLog-ID'] = str(log.id)
 
     # Inject CC header if CC addresses are set on this log
     cc_addresses = [addr.strip() for addr in log.cc.split(',') if addr.strip()] if log.cc else []
     if cc_addresses:
         msg['Cc'] = ', '.join(cc_addresses)
 
-    # Add List-Unsubscribe headers for campaign deliverability compliance (RFC 2369 / RFC 8058)
-    if log.campaign:
+    # Add List-Unsubscribe headers ONLY for custom domain marketing campaigns (omit for free gmail.com addresses)
+    if log.campaign and not sender_domain.endswith('gmail.com') and not sender_domain.endswith('yahoo.com'):
         msg['List-Unsubscribe'] = f"<mailto:unsubscribe@{sender_domain}?subject=unsubscribe>"
         msg['List-Unsubscribe-Post'] = "List-Unsubscribe=One-Click"
 
@@ -174,7 +173,7 @@ def send_email_task(self, email_log_id):
                 maintype, subtype = mime_type.split('/', 1)
             else:
                 maintype, subtype = 'application', 'octet-stream'
-            msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=att_name)
+            msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=att_name, disposition='attachment')
         except Exception as attach_err:
             logger.warning(f"Failed to attach file {att_name} for log {email_log_id}: {attach_err}")
 
