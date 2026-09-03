@@ -160,6 +160,23 @@ def send_email_task(self, email_log_id):
     else:
         msg.set_content(plain_text_content)
 
+    # Attach file (Resume / PDF / Docx) if provided
+    att_name = log.attachment_name or (log.campaign.attachment_name if log.campaign else '')
+    att_data = log.attachment_data or (log.campaign.attachment_data if log.campaign else '')
+
+    if att_name and att_data:
+        try:
+            import mimetypes
+            file_bytes = base64.b64decode(att_data)
+            mime_type, _ = mimetypes.guess_type(att_name)
+            if mime_type and '/' in mime_type:
+                maintype, subtype = mime_type.split('/', 1)
+            else:
+                maintype, subtype = 'application', 'octet-stream'
+            msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=att_name)
+        except Exception as attach_err:
+            logger.warning(f"Failed to attach file {att_name} for log {email_log_id}: {attach_err}")
+
     # Pre-Flight RFC & Deliverability Audit
 
     analysis = DeliverabilityAnalyzer.validate_rfc_compliance(msg, is_campaign=bool(log.campaign))

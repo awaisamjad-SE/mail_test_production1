@@ -27,6 +27,8 @@ class Campaign(models.Model):
 
     status = models.CharField(max_length=20, default='Draft') # 'Draft', 'Processing', 'Completed', 'Failed'
     send_gap_minutes = models.IntegerField(default=5)
+    attachment_name = models.CharField(max_length=255, blank=True, default='')
+    attachment_data = models.TextField(blank=True, default='') # Base64 encoded file
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -60,6 +62,8 @@ class EmailLog(models.Model):
     scheduled_at = models.DateTimeField(null=True, blank=True, db_index=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     retry_count = models.IntegerField(default=0)
+    attachment_name = models.CharField(max_length=255, blank=True, default='')
+    attachment_data = models.TextField(blank=True, default='') # Base64 encoded file
 
     # Message Tracking & Threading
     message_id = models.CharField(max_length=255, unique=True, null=True, blank=True, db_index=True)

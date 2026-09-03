@@ -212,6 +212,9 @@ class DirectSendView(APIView):
         send_gap_seconds = send_gap_minutes * 60
         now = timezone.now()
 
+        attachment_name = data.get('attachment_name', '').strip()
+        attachment_data = data.get('attachment_data', '').strip()
+
         created_logs = []
         for idx, to_email in enumerate(recipients):
             dispatch_time = now + timedelta(seconds=idx * send_gap_seconds)
@@ -226,7 +229,9 @@ class DirectSendView(APIView):
                 subject=subject,
                 body=body,
                 status='PENDING',
-                scheduled_at=dispatch_time
+                scheduled_at=dispatch_time,
+                attachment_name=attachment_name,
+                attachment_data=attachment_data
             )
             created_logs.append(log)
             ActivityLog.objects.create(user=user, action=f"Direct email enqueued to {to_email}")
@@ -304,6 +309,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
         send_gap_minutes = int(data.get('send_gap_minutes', 5))
         send_gap_seconds = send_gap_minutes * 60
+        attachment_name = data.get('attachment_name', '').strip()
+        attachment_data = data.get('attachment_data', '').strip()
 
         # Create Campaign
         campaign = Campaign.objects.create(
@@ -313,6 +320,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
             subject=subject,
             body=body,
             send_gap_minutes=send_gap_minutes,
+            attachment_name=attachment_name,
+            attachment_data=attachment_data,
             total_recipients=len(recipients),
             status='Processing'
         )
@@ -352,7 +361,9 @@ class CampaignViewSet(viewsets.ModelViewSet):
                 subject=rcpt_subject,
                 body=rcpt_body,
                 status='PENDING',
-                scheduled_at=dispatch_time
+                scheduled_at=dispatch_time,
+                attachment_name=attachment_name,
+                attachment_data=attachment_data
             )
 
             # Trigger email dispatch with calculated delay countdown

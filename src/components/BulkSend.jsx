@@ -13,6 +13,7 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
   const [campaignName, setCampaignName] = useState(initialCampaignName);
   const [csvData, setCsvData] = useState(null);
   const [file, setFile] = useState(null);
+  const [attachmentPayload, setAttachmentPayload] = useState(null);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [cc, setCc] = useState('');
@@ -102,6 +103,7 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
       body: body,
       send_gap_minutes: parseInt(sendGapMinutes, 10),
       ...(cc && { cc }),
+      ...(attachmentPayload && attachmentPayload),
       recipients
     };
 
@@ -424,7 +426,10 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
                   {file && (
                     <button
                       type="button"
-                      onClick={() => setFile(null)}
+                      onClick={() => {
+                        setFile(null);
+                        setAttachmentPayload(null);
+                      }}
                       className="text-[10px] text-rose-500 font-bold uppercase tracking-wider hover:underline cursor-pointer"
                     >
                       Remove File
@@ -434,13 +439,30 @@ export default function BulkSend({ onNavigateToTracker, initialCampaignName = ''
                 <div className="flex items-center gap-3">
                   <input
                     type="file"
-                    onChange={(e) => setFile(e.target.files[0] || null)}
+                    onChange={(e) => {
+                      const selectedFile = e.target.files[0];
+                      if (!selectedFile) {
+                        setFile(null);
+                        setAttachmentPayload(null);
+                        return;
+                      }
+                      setFile(selectedFile);
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const base64Data = reader.result.split(',')[1];
+                        setAttachmentPayload({
+                          attachment_name: selectedFile.name,
+                          attachment_data: base64Data
+                        });
+                      };
+                      reader.readAsDataURL(selectedFile);
+                    }}
                     className="input text-xs file:hidden cursor-pointer"
                   />
                 </div>
                 {file && (
-                  <p className="text-[11px] text-lime font-mono">
-                    Selected file: {file.name} ({Math.round(file.size / 1024)} KB)
+                  <p className="text-[11px] text-lime font-mono flex items-center gap-1.5 pt-1">
+                    <CheckCircle2 className="size-3 text-lime" /> Attached: {file.name} ({Math.round(file.size / 1024)} KB)
                   </p>
                 )}
               </label>

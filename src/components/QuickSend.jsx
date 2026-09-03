@@ -9,6 +9,7 @@ import imgQuick from '../assets/snippet-quick.jpg';
 export default function QuickSend({ onNavigateToTracker }) {
   const [form, setForm] = useState({ to: '', cc: '', subject: '', body: '', replyTo: '' });
   const [file, setFile] = useState(null);
+  const [attachmentPayload, setAttachmentPayload] = useState(null);
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -26,7 +27,8 @@ export default function QuickSend({ onNavigateToTracker }) {
         to: form.to,
         cc: form.cc,
         subject: form.subject,
-        body: form.body
+        body: form.body,
+        ...(attachmentPayload && attachmentPayload)
       };
 
       const res = await sendDirectEmail(payload);
@@ -58,6 +60,7 @@ export default function QuickSend({ onNavigateToTracker }) {
   const handleClear = () => {
     setForm({ to: '', cc: '', subject: '', body: '', replyTo: '' });
     setFile(null);
+    setAttachmentPayload(null);
   };
 
   return (
@@ -159,6 +162,34 @@ export default function QuickSend({ onNavigateToTracker }) {
             <label className="block text-sm font-medium">Message body <span className="text-rose">*</span></label>
             <BodyEditor value={form.body} onChange={handleBodyChange} />
           </div>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-medium flex items-center justify-between">
+              <span>File Attachment <span className="text-[11px] text-muted-foreground font-normal">(optional, e.g. PDF resume)</span></span>
+              {file && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFile(null);
+                    setAttachmentPayload(null);
+                  }}
+                  className="text-[10px] text-rose-500 font-bold uppercase tracking-wider hover:underline cursor-pointer"
+                >
+                  Remove File
+                </button>
+              )}
+            </span>
+            <input
+              type="file"
+              onChange={handleFileChange}
+              className="input text-xs file:hidden cursor-pointer"
+            />
+            {file && (
+              <p className="text-[11px] text-lime font-mono pt-1">
+                Attached: {file.name} ({Math.round(file.size / 1024)} KB)
+              </p>
+            )}
+          </label>
 
           <div className="flex items-center gap-3 pt-2">
             <button
