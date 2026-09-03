@@ -115,7 +115,8 @@ def send_email_task(self, email_log_id):
         return "Invalid SMTP config."
 
     # 4. Pre-Generate & Persist Canonical Message-ID BEFORE SMTP transmission
-    from_name = user.full_name or 'MailFlow'
+    default_sender_prefix = authenticated_sender.split('@')[0].replace('.', ' ').title() if '@' in authenticated_sender else ''
+    from_name = user.full_name or default_sender_prefix
     sender_domain = authenticated_sender.split('@')[-1] if '@' in authenticated_sender else 'mailflow.engineer'
 
     if not log.message_id:

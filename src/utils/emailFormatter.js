@@ -40,7 +40,7 @@ const wrapInEmailShell = (bodyContent, options = {}) => {
     buttonText = '',
     buttonUrl = '#',
     buttonBg = '#2563eb',
-    footerText = 'Sent via MailFlow',
+    footerText = '',
   } = options;
 
   const headerHtml = headerTitle ? `
@@ -55,6 +55,13 @@ const wrapInEmailShell = (bodyContent, options = {}) => {
     <tr>
       <td align="center" style="padding:0 35px 30px;">
         <a href="${buttonUrl}" style="display:inline-block;padding:12px 30px;background:${buttonBg};color:#ffffff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:15px;font-family:Arial,Helvetica,sans-serif;">${buttonText}</a>
+      </td>
+    </tr>` : '';
+
+  const footerHtml = footerText ? `
+    <tr>
+      <td bgcolor="#f9fafb" align="center" style="padding:20px;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif;">
+        ${footerText}
       </td>
     </tr>` : '';
 
@@ -76,11 +83,7 @@ const wrapInEmailShell = (bodyContent, options = {}) => {
           </td>
         </tr>
         ${buttonHtml}
-        <tr>
-          <td bgcolor="#f9fafb" align="center" style="padding:20px;color:#6b7280;font-size:12px;font-family:Arial,Helvetica,sans-serif;">
-            ${footerText}
-          </td>
-        </tr>
+        ${footerHtml}
       </table>
     </td></tr>
   </table>
@@ -100,7 +103,7 @@ export const buildVisualEmail = (state) => {
     buttonText = '',
     buttonUrl = '#',
     buttonBg = '#7c3aed',
-    footerText = 'Sent via MailFlow',
+    footerText = '',
   } = state;
 
   let bodyContent;
