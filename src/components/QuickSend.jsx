@@ -16,6 +16,25 @@ export default function QuickSend({ onNavigateToTracker }) {
   const handleChange = (e) => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   const handleBodyChange = (bodyHtml) => setForm(prev => ({ ...prev, body: bodyHtml }));
 
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (!selectedFile) {
+      setFile(null);
+      setAttachmentPayload(null);
+      return;
+    }
+    setFile(selectedFile);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64Data = reader.result.split(',')[1];
+      setAttachmentPayload({
+        attachment_name: selectedFile.name,
+        attachment_data: base64Data
+      });
+    };
+    reader.readAsDataURL(selectedFile);
+  };
+
   const recipientsList = form.to.split(',').map(s => s.trim()).filter(Boolean);
   const isValid = recipientsList.length > 0 && recipientsList.every(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) && form.subject && form.body;
 
