@@ -179,12 +179,22 @@ def send_email_task(self, email_log_id):
     if att_name and att_data:
         try:
             import mimetypes
-            file_bytes = base64.b64decode(att_data)
+            clean_b64 = att_data.split(',', 1)[1] if ',' in att_data else att_data
+            file_bytes = base64.b64decode(clean_b64.strip())
+
             mime_type, _ = mimetypes.guess_type(att_name)
-            if mime_type and '/' in mime_type:
-                maintype, subtype = mime_type.split('/', 1)
-            else:
-                maintype, subtype = 'application', 'octet-stream'
+            if not mime_type:
+                ext = att_name.lower().rsplit('.', 1)[-1] if '.' in att_name else ''
+                if ext == 'pdf':
+                    mime_type = 'application/pdf'
+                elif ext == 'docx':
+                    mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                elif ext == 'doc':
+                    mime_type = 'application/msword'
+                else:
+                    mime_type = 'application/octet-stream'
+
+            maintype, subtype = mime_type.split('/', 1) if '/' in mime_type else ('application', 'octet-stream')
             msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=att_name, disposition='attachment')
         except Exception as attach_err:
             logger.warning(f"Failed to attach file {att_name} for log {email_log_id}: {attach_err}")

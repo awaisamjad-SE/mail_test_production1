@@ -215,6 +215,8 @@ class DirectSendView(APIView):
 
         attachment_name = data.get('attachment_name', '').strip()
         attachment_data = data.get('attachment_data', '').strip()
+        if ',' in attachment_data:
+            attachment_data = attachment_data.split(',', 1)[1].strip()
 
         created_logs = []
         for idx, to_email in enumerate(recipients):
@@ -312,6 +314,8 @@ class CampaignViewSet(viewsets.ModelViewSet):
         send_gap_seconds = send_gap_minutes * 60
         attachment_name = data.get('attachment_name', '').strip()
         attachment_data = data.get('attachment_data', '').strip()
+        if ',' in attachment_data:
+            attachment_data = attachment_data.split(',', 1)[1].strip()
 
         # Create Campaign
         campaign = Campaign.objects.create(
