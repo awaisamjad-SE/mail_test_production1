@@ -41,9 +41,21 @@ def send_email_task(self, email_log_id):
 
     try:
         log = EmailLog.objects.get(id=email_log_id)
-
     except EmailLog.DoesNotExist:
         return f"Log {email_log_id} not found."
+
+    # Check Campaign Status before dispatching
+    if log.campaign:
+        log.campaign.refresh_from_db()
+        if log.campaign.status == 'Paused':
+            logger.info(f"Campaign {log.campaign.id} is Paused. Skipping email dispatch for log {log.id}.")
+            return f"Campaign {log.campaign.id} is Paused."
+        elif log.campaign.status in ['Cancelled', 'Stopped']:
+            logger.info(f"Campaign {log.campaign.id} is {log.campaign.status}. Cancelling email log {log.id}.")
+            log.status = 'FAILED'
+            log.error_message = f"Campaign was {log.campaign.status.lower()} by user."
+            log.save()
+            return f"Campaign {log.campaign.id} was cancelled."
 
     user = log.user
 
@@ -290,23 +302,25 @@ def send_email_task(self, email_log_id):
                 return f"Failed sending to {log.recipient}: {error_msg}"
 
 def check_campaign_completion(campaign_id):
-    # Retrieve campaign
-    campaign = Campaign.objects.get(id=campaign_id)
-    
-    # Check if there are any pending email logs left
-    pending_logs = EmailLog.objects.filter(campaign=campaign, status='PENDING').count()
-    if pending_logs == 0:
-        # If all sent/failed, complete the campaign
-        if campaign.successful_count > 0:
-            campaign.status = 'Completed'
-        else:
-            campaign.status = 'Failed'
-        campaign.save()
-        
-        ActivityLog.objects.create(
-            user=campaign.user, 
-            action=f"Campaign Completed: {campaign.name} ({campaign.successful_count} sent, {campaign.failed_count} failed)"
-        )
+    try:
+        campaign = Campaign.objects.get(id=campaign_id)
+        if campaign.status in ['Paused', 'Cancelled', 'Stopped']:
+            return
+
+        pending_logs = EmailLog.objects.filter(campaign=campaign, status='PENDING').count()
+        if pending_logs == 0:
+            if campaign.successful_count > 0:
+                campaign.status = 'Completed'
+            else:
+                campaign.status = 'Failed'
+            campaign.save()
+
+            ActivityLog.objects.create(
+                user=campaign.user, 
+                action=f"Campaign Completed: {campaign.name} ({campaign.successful_count} sent, {campaign.failed_count} failed)"
+            )
+    except Campaign.DoesNotExist:
+        pass
 
 @shared_task
 def sync_user_inbox_task(credential_id):

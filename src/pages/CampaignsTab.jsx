@@ -103,6 +103,8 @@ export default function CampaignsTab({ onNavigateToInbox }) {
       Completed: { c: "lime", label: "Completed", dot: false },
       Failed: { c: "rose", label: "Failed", dot: false },
       Processing: { c: "cyan", label: "Active", dot: true },
+      Paused: { c: "amber", label: "Paused", dot: false },
+      Cancelled: { c: "rose", label: "Cancelled", dot: false },
     };
     const x = map[status] || { c: "amber", label: status, dot: false };
     return (

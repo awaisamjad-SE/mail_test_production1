@@ -221,6 +221,21 @@ export const deleteCampaign = async (id) => {
   return response.data;
 };
 
+export const pauseCampaign = async (id) => {
+  const response = await api.post(`/api/campaigns/${id}/pause/`);
+  return response.data;
+};
+
+export const resumeCampaign = async (id) => {
+  const response = await api.post(`/api/campaigns/${id}/resume/`);
+  return response.data;
+};
+
+export const cancelCampaign = async (id) => {
+  const response = await api.post(`/api/campaigns/${id}/cancel/`);
+  return response.data;
+};
+
 // Dashboard Analytics
 export const fetchDashboardStats = async () => {
   const response = await api.get('/api/dashboard/stats/');

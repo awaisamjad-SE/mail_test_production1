@@ -113,6 +113,8 @@ export default function TrackerAndLogsTab({ onNavigateToInbox }) {
       Completed: { c: "lime", label: "Completed", dot: false },
       Failed: { c: "rose", label: "Failed", dot: false },
       Processing: { c: "cyan", label: "Active", dot: true },
+      Paused: { c: "amber", label: "Paused", dot: false },
+      Cancelled: { c: "rose", label: "Cancelled", dot: false },
       SENT: { c: "lime", label: "Sent", dot: false },
       PENDING: { c: "cyan", label: "Pending", dot: true },
     };

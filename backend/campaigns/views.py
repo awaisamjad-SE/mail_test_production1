@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.utils import timezone
@@ -372,6 +373,64 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
 
         return Response(CampaignSerializer(campaign).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def pause(self, request, pk=None):
+        campaign = self.get_object()
+        campaign.status = 'Paused'
+        campaign.save()
+        ActivityLog.objects.create(user=request.user, action=f"Paused Campaign: {campaign.name}")
+        return Response({
+            "status": "Paused",
+            "message": "Campaign has been paused. Pending email dispatches have been stopped."
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def resume(self, request, pk=None):
+        campaign = self.get_object()
+        if campaign.status == 'Paused':
+            campaign.status = 'Processing'
+            campaign.save()
+            ActivityLog.objects.create(user=request.user, action=f"Resumed Campaign: {campaign.name}")
+
+            # Re-queue pending logs starting from now
+            pending_logs = EmailLog.objects.filter(campaign=campaign, status='PENDING').order_by('created_at')
+            now = timezone.now()
+            send_gap_seconds = campaign.send_gap_minutes * 60
+
+            for idx, log in enumerate(pending_logs):
+                countdown = int(idx * send_gap_seconds)
+                log.scheduled_at = now + timedelta(seconds=countdown)
+                log.save(update_fields=['scheduled_at'])
+                dispatch_email(str(log.id), countdown=countdown)
+
+            return Response({
+                "status": "Processing",
+                "message": "Campaign has been resumed. Re-queued pending emails."
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            "error": f"Campaign is not paused (current status: {campaign.status})."
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        campaign = self.get_object()
+        campaign.status = 'Cancelled'
+        campaign.save()
+
+        pending_logs = EmailLog.objects.filter(campaign=campaign, status='PENDING')
+        count = pending_logs.count()
+        pending_logs.update(status='FAILED', error_message='Campaign was cancelled by user.')
+
+        campaign.failed_count += count
+        campaign.save(update_fields=['failed_count'])
+
+        ActivityLog.objects.create(user=request.user, action=f"Cancelled Campaign: {campaign.name}")
+        return Response({
+            "status": "Cancelled",
+            "message": f"Campaign has been cancelled. Cancelled {count} pending emails."
+        }, status=status.HTTP_200_OK)
 
 
 class CampaignStatusView(APIView):

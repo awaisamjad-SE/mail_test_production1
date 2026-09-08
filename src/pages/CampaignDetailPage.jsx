@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { 
   Send, AlertTriangle, CheckCircle2, RefreshCw, ChevronLeft, Inbox, Sparkles, 
-  Copy, Check, Pause, Play, RotateCcw, Download, Eye, CornerUpLeft, ArrowRight,
+  Copy, Check, Pause, Play, RotateCcw, Download, Eye, CornerUpLeft, ArrowRight, Square,
   ShieldCheck, Server, AlertOctagon, Terminal, FileText, Layers, Activity, Filter,
   Search, ExternalLink, HelpCircle, User, Mail, Clock, ChevronDown, ChevronUp, X
 } from 'lucide-react';
@@ -276,6 +276,43 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  const handlePauseCampaign = async () => {
+    try {
+      showToast('Pausing campaign dispatches...');
+      await api.pauseCampaign(campaignId);
+      setCampaign(prev => prev ? { ...prev, status: 'Paused' } : null);
+      showToast('Campaign paused successfully. Dispatches stopped.');
+      loadData();
+    } catch (err) {
+      showToast('Failed to pause campaign: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleResumeCampaign = async () => {
+    try {
+      showToast('Resuming campaign dispatches...');
+      await api.resumeCampaign(campaignId);
+      setCampaign(prev => prev ? { ...prev, status: 'Processing' } : null);
+      showToast('Campaign resumed and re-queued successfully.');
+      loadData();
+    } catch (err) {
+      showToast('Failed to resume campaign: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleCancelCampaign = async () => {
+    if (!window.confirm('Are you sure you want to stop/cancel this campaign? Pending email dispatches will be cancelled.')) return;
+    try {
+      showToast('Stopping campaign...');
+      await api.cancelCampaign(campaignId);
+      setCampaign(prev => prev ? { ...prev, status: 'Cancelled' } : null);
+      showToast('Campaign stopped and cancelled.');
+      loadData();
+    } catch (err) {
+      showToast('Failed to cancel campaign: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
   const loadData = async () => {
     if (!campaignId) return;
     try {
@@ -435,11 +472,40 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
 
           {/* Header Action Buttons */}
           <div className="flex items-center gap-2 font-mono text-xs">
-            {campaign.status === 'Processing' && (
-              <button className="px-3.5 py-1.5 rounded-xl bg-amber/15 border border-amber/30 text-amber font-bold flex items-center gap-1.5 hover:bg-amber/25 cursor-pointer">
-                <Pause className="size-3.5" /> Pause
-              </button>
+            {(campaign.status === 'Processing' || campaign.status === 'Sending' || campaign.status === 'Draft') && (
+              <>
+                <button 
+                  onClick={handlePauseCampaign}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber/15 border border-amber/30 text-amber font-bold flex items-center gap-1.5 hover:bg-amber/25 cursor-pointer transition-colors shadow-sm"
+                >
+                  <Pause className="size-3.5" /> Pause
+                </button>
+                <button 
+                  onClick={handleCancelCampaign}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose/15 border border-rose/30 text-rose font-bold flex items-center gap-1.5 hover:bg-rose/25 cursor-pointer transition-colors shadow-sm"
+                >
+                  <Square className="size-3.5" /> Stop Campaign
+                </button>
+              </>
             )}
+
+            {campaign.status === 'Paused' && (
+              <>
+                <button 
+                  onClick={handleResumeCampaign}
+                  className="px-3.5 py-1.5 rounded-xl bg-cyan/15 border border-cyan/30 text-cyan font-bold flex items-center gap-1.5 hover:bg-cyan/25 cursor-pointer transition-colors shadow-sm"
+                >
+                  <Play className="size-3.5" /> Resume
+                </button>
+                <button 
+                  onClick={handleCancelCampaign}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose/15 border border-rose/30 text-rose font-bold flex items-center gap-1.5 hover:bg-rose/25 cursor-pointer transition-colors shadow-sm"
+                >
+                  <Square className="size-3.5" /> Stop Campaign
+                </button>
+              </>
+            )}
+
             {campaign.failed_count > 0 && (
               <button 
                 onClick={() => showToast('Retrying failed recipient dispatches...')}
@@ -467,9 +533,11 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
               <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${
                 campaign.status === 'Completed' ? 'bg-lime/15 text-lime border border-lime/30' :
                 campaign.status === 'Processing' ? 'bg-cyan/15 text-cyan border border-cyan/30 animate-pulse' :
+                campaign.status === 'Paused' ? 'bg-amber/15 text-amber border border-amber/30' :
+                campaign.status === 'Cancelled' ? 'bg-rose/15 text-rose border border-rose/30' :
                 'bg-rose/15 text-rose border border-rose/30'
               }`}>
-                {campaign.status === 'Processing' ? '● ACTIVE LIVE' : campaign.status.toUpperCase()}
+                {campaign.status === 'Processing' ? '● ACTIVE LIVE' : campaign.status === 'Paused' ? 'PAUSED' : campaign.status.toUpperCase()}
               </span>
             </div>
 
