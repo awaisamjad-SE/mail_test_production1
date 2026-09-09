@@ -6,8 +6,12 @@ export const getBackendUrl = () => {
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
       return import.meta.env.VITE_LOCAL_API_URL || 'http://127.0.0.1:8000';
     }
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    }
+    return window.location.origin;
   }
-  return import.meta.env.VITE_API_URL || 'https://mail.awaisamjad.engineer';
+  return import.meta.env.VITE_API_URL || '';
 };
 
 

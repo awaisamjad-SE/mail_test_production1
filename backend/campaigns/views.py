@@ -260,7 +260,7 @@ class CampaignViewSet(viewsets.ModelViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get_queryset(self):
-        return Campaign.objects.filter(user=self.request.user).exclude(campaign_type='QUICK_SEND').order_by('-created_at')
+        return Campaign.objects.filter(user=self.request.user).exclude(campaign_type='QUICK_SEND').defer('attachment_data').order_by('-created_at')
 
     def perform_create(self, serializer):
         # We handle creation via custom POST logic below to support queuing
@@ -602,7 +602,7 @@ class EmailHistoryListView(APIView):
         campaign_filter = request.query_params.get('campaign')
         search_query = request.query_params.get('search')
         
-        logs = EmailLog.objects.filter(user=user).order_by('-sent_at', '-id')
+        logs = EmailLog.objects.filter(user=user).defer('attachment_data').order_by('-sent_at', '-id')
         
         if status_filter:
             logs = logs.filter(status=status_filter.upper())

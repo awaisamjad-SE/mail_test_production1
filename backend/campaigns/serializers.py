@@ -4,7 +4,7 @@ from .models import Campaign, EmailLog, EmailTemplate, ContactList, Contact, Act
 class CampaignSerializer(serializers.ModelSerializer):
     class Meta:
         model = Campaign
-        fields = '__all__'
+        exclude = ('attachment_data',)
         read_only_fields = ('id', 'user', 'successful_count', 'failed_count', 'replied_count', 'bounced_count', 'auto_reply_count', 'unsubscribed_count', 'status', 'created_at')
 
 class EmailLogSerializer(serializers.ModelSerializer):
@@ -12,7 +12,7 @@ class EmailLogSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = EmailLog
-        fields = '__all__'
+        exclude = ('attachment_data',)
         read_only_fields = ('id', 'user', 'sent_at', 'status', 'error_message', 'retry_count', 'message_id', 'reply_status', 'last_inbound_at')
 
 class BounceDetailSerializer(serializers.ModelSerializer):
