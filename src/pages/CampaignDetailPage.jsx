@@ -489,20 +489,22 @@ export default function CampaignDetailPage({ campaignId, onBack, onNavigateToInb
               </>
             )}
 
-            {campaign.status === 'Paused' && (
+            {(campaign.status === 'Paused' || campaign.status === 'Cancelled' || campaign.status === 'Stopped') && (
               <>
                 <button 
                   onClick={handleResumeCampaign}
                   className="px-3.5 py-1.5 rounded-xl bg-cyan/15 border border-cyan/30 text-cyan font-bold flex items-center gap-1.5 hover:bg-cyan/25 cursor-pointer transition-colors shadow-sm"
                 >
-                  <Play className="size-3.5" /> Resume
+                  <Play className="size-3.5" /> Resume Campaign
                 </button>
-                <button 
-                  onClick={handleCancelCampaign}
-                  className="px-3.5 py-1.5 rounded-xl bg-rose/15 border border-rose/30 text-rose font-bold flex items-center gap-1.5 hover:bg-rose/25 cursor-pointer transition-colors shadow-sm"
-                >
-                  <Square className="size-3.5" /> Stop Campaign
-                </button>
+                {campaign.status === 'Paused' && (
+                  <button 
+                    onClick={handleCancelCampaign}
+                    className="px-3.5 py-1.5 rounded-xl bg-rose/15 border border-rose/30 text-rose font-bold flex items-center gap-1.5 hover:bg-rose/25 cursor-pointer transition-colors shadow-sm"
+                  >
+                    <Square className="size-3.5" /> Stop Campaign
+                  </button>
+                )}
               </>
             )}
 

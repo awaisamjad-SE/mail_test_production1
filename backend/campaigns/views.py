@@ -392,13 +392,20 @@ class CampaignViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def resume(self, request, pk=None):
         campaign = self.get_object()
-        if campaign.status == 'Paused':
+        if campaign.status in ['Paused', 'Cancelled', 'Stopped']:
             campaign.status = 'Processing'
             campaign.save()
             ActivityLog.objects.create(user=request.user, action=f"Resumed Campaign: {campaign.name}")
 
-            # Re-queue pending logs starting from now
-            pending_logs = EmailLog.objects.filter(campaign=campaign, status='PENDING').order_by('created_at')
+            # Re-queue both PENDING logs and logs cancelled by user
+            cancelled_logs = EmailLog.objects.filter(campaign=campaign, error_message='Campaign was cancelled by user.')
+            if cancelled_logs.exists():
+                cancelled_count = cancelled_logs.count()
+                cancelled_logs.update(status='PENDING', error_message=None)
+                campaign.failed_count = max(0, campaign.failed_count - cancelled_count)
+                campaign.save(update_fields=['failed_count'])
+
+            pending_logs = EmailLog.objects.filter(campaign=campaign, status='PENDING').order_by('scheduled_at')
             now = timezone.now()
             send_gap_seconds = campaign.send_gap_minutes * 60
 
@@ -410,11 +417,11 @@ class CampaignViewSet(viewsets.ModelViewSet):
 
             return Response({
                 "status": "Processing",
-                "message": "Campaign has been resumed. Re-queued pending emails."
+                "message": f"Campaign has been resumed. Re-queued {pending_logs.count()} pending emails."
             }, status=status.HTTP_200_OK)
 
         return Response({
-            "error": f"Campaign is not paused (current status: {campaign.status})."
+            "error": f"Campaign is currently {campaign.status} and cannot be resumed."
         }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
